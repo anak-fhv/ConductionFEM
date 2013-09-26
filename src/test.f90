@@ -13,12 +13,12 @@ program test
 !    real, dimension(4,4) :: A
 !    real, dimension(2) :: timearray
 !    real :: dm, result, T1, T2
-!    integer :: i
+    integer :: i
     print *, 'testing'
     A = reshape((/10,-3,1,2,-6,1,-1,2,5/),(/3,3/))
     B = ludecomp(A)
-    print *, B(1,:)
-    print *, B(2,:)
-    print *, B(3,:)
+    do i=1,3
+        print *, B(i,:)
+    end do
     print *, 'testing again'
 end program test
