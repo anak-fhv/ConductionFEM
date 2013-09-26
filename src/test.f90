@@ -9,13 +9,14 @@ program test
 !    character, dimension(:), allocatable :: surfacenames
 !    integer, dimension(7) :: meshdetails
     integer, dimension(:,:), allocatable :: connectivity, surfacefaces
-    real, dimension(3,3) :: A,B
+    real, dimension(3,3) :: A,B,C
 !    real, dimension(4,4) :: A
 !    real, dimension(2) :: timearray
 !    real :: dm, result, T1, T2
     integer :: i
     print *, 'testing'
     A = reshape((/10,-3,1,2,-6,1,-1,2,5/),(/3,3/))
+    B = eye(3)
     B = ludecomp(A)
     do i=1,3
         print *, B(i,:)

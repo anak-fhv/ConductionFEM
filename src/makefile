@@ -1,8 +1,10 @@
 # This makefile uses intel fortran compiler for linux
 
 # Makefile variables
-FC		:= ifort
-FCFLAGS	:= -g
+FC		 = ifort
+FCFLAGS	 = -g
+MLIBPATH = /opt/intel/composer_xe_2013.5.192/mkl/lib/intel64
+FCLIBS	:= $(MLIBPATH)/libmkl_lapack95_ilp64.a
 VPATH	:= src
 OBJDIR	:= ../obj
 
