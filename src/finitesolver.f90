@@ -88,7 +88,6 @@ module finitesolver
                 call assembleelementfluxes(globalflux,elementflux,elementnodes)
             end if
         end do
-        print *, 'GS: ', globalstiffness(1,:)
         call solvefinalequations(globalstiffness,globalflux,temperature)
     end subroutine finitesolution
 
@@ -105,9 +104,8 @@ module finitesolver
         ldb = m
         nrhs = 1
         allocate(ipiv(m))
-        call dgetrf(m,n,globalstiffness,lda,ipiv,info)
-        print *, 'GS: ', globalstiffness(1,:)
-        call dgetrs(trans,n,nrhs,globalstiffness,lda,ipiv,globalflux,ldb,info)
+        call dgesv(m, nrhs, globalstiffness, lda, ipiv, globalflux, ldb, info)
+        print *, 'Info: ', info
         temperature = globalflux
     end subroutine solvefinalequations
 
