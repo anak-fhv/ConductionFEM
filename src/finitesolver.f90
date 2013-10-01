@@ -25,7 +25,6 @@ module finitesolver
         numel = meshdetails(2)
         numdo = meshdetails(6)
         numbd = meshdetails(7)
-        print *, 'Point 1'
         allocate(elementcoords(4,3))
         allocate(elementgradient(4,4))
         allocate(elementstiffness(4,4))
@@ -33,13 +32,11 @@ module finitesolver
         allocate(convectivestiffness(4,4))
         allocate(globalstiffness(numno,numno))
         allocate(stiffinv(numno,numno))
-        print *, 'Point 2'
         allocate(elementnodes(4))
         allocate(elementflux(4))
         allocate(temperature(numno))
         allocate(temp2(numno))
         allocate(globalflux(numno))
-        print *, 'Point 3'
 
         globalstiffness = 0.0d0
         globalflux = 0.0d0
@@ -47,10 +44,10 @@ module finitesolver
 
         call readboundaryconditions(meshdetails, boundaryconditions, &
         conductivities, boundaryvalues, tambient, generation, generationrate)
+
         print *, 'Boundaryconditions: ', boundaryconditions
-        print *, 'Surfacefaces: ', surfacefaces(207,:)
-        do i=1,3
-            print *, 'Element: ', i
+
+        do i=1,numel
             elementstiffness = 0.0d0
             conductivestiffness = 0.0d0
             convectivestiffness = 0.0d0
@@ -91,7 +88,28 @@ module finitesolver
                 call assembleelementfluxes(globalflux,elementflux,elementnodes)
             end if
         end do
+        print *, 'GS: ', globalstiffness(1,:)
+        call solvefinalequations(globalstiffness,globalflux,temperature)
     end subroutine finitesolution
+
+    subroutine solvefinalequations(globalstiffness,globalflux,temperature)
+        double precision, dimension(:,:) :: globalstiffness
+        double precision, dimension(:) :: globalflux, temperature
+        integer :: m, n, info, lda, ldb, nrhs
+        integer, dimension(:), allocatable :: ipiv
+        character :: trans='N'
+
+        m = size(globalstiffness,1)
+        n = size(globalstiffness,2)
+        lda = m
+        ldb = m
+        nrhs = 1
+        allocate(ipiv(m))
+        call dgetrf(m,n,globalstiffness,lda,ipiv,info)
+        print *, 'GS: ', globalstiffness(1,:)
+        call dgetrs(trans,n,nrhs,globalstiffness,lda,ipiv,globalflux,ldb,info)
+        temperature = globalflux
+    end subroutine solvefinalequations
 
     subroutine getmeshdata(meshdetails,vertices,connectivity,domainelements,surfacenames,surfacefaces)
         integer, parameter :: unitnumber = 111
