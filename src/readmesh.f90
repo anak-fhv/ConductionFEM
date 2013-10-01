@@ -29,7 +29,7 @@ module readmesh
         integer :: unitnumber
         integer, dimension(7) :: meshdetails
         integer :: i
-        real, dimension(:,:), allocatable :: vertices
+        double precision, dimension(:,:), allocatable :: vertices
 
         allocate(vertices(meshdetails(1), 3))
         do i=1,meshdetails(1)

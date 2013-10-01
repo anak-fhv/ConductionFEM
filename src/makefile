@@ -3,8 +3,17 @@
 # Makefile variables
 FC		 = ifort
 FCFLAGS	 = -g
-MLIBPATH = /opt/intel/composer_xe_2013.5.192/mkl/lib/intel64
-FCLIBS	:= $(MLIBPATH)/libmkl_lapack95_ilp64.a
+LIBPATH = /opt/intel/composer_xe_2013.5.192/mkl/lib/intel64
+LIBS	:= \
+  			$(LIBPATH)/libmkl_scalapack_lp64.a \
+  			$(LIBPATH)/libmkl_intel_lp64.a \
+  			$(LIBPATH)/libmkl_blacs_openmpi_lp64.a \
+  			$(LIBPATH)/libmkl_core.a  \
+  			$(LIBPATH)/libmkl_sequential.a \
+  			$(LIBPATH)/libmkl_core.a  \
+  			$(LIBPATH)/libmkl_sequential.a \
+  			$(LIBPATH)/libmkl_core.a  \
+  			-lpthread
 VPATH	:= src
 OBJDIR	:= ../obj
 
@@ -13,22 +22,22 @@ OBJECTS	:= $(OBJDIR)/test.o $(OBJDIR)/finitesolver.o $(OBJDIR)/readmesh.o $(OBJD
 
 # Make all target
 all: $(OBJECTS)
-	$(FC) $(FFLAGS) -o $(OBJDIR)/test $(OBJECTS)
+	$(FC) $(FCFLAGS) -o $(OBJDIR)/test $(OBJECTS) $(LIBS)
 
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
 $(OBJDIR)/test.o: $(OBJDIR)/finitesolver.o $(OBJDIR)/readmesh.o $(OBJDIR)/numericalmethods.o | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -c test.f90 -o $(OBJDIR)/test.o
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -c test.f90 -o $(OBJDIR)/test.o $(LIBS)
 
 $(OBJDIR)/finitesolver.o: $(OBJDIR)/readmesh.o $(OBJDIR)/numericalmethods.o | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c finitesolver.f90 -o $(OBJDIR)/finitesolver.o
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c finitesolver.f90 -o $(OBJDIR)/finitesolver.o $(LIBS)
 
 $(OBJDIR)/readmesh.o: $(OBJDIR)/numericalmethods.o | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c readmesh.f90 -o $(OBJDIR)/readmesh.o
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c readmesh.f90 -o $(OBJDIR)/readmesh.o $(LIBS)
 
 $(OBJDIR)/numericalmethods.o: | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c numericalmethods.f90 -o $(OBJDIR)/numericalmethods.o
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c numericalmethods.f90 -o $(OBJDIR)/numericalmethods.o $(LIBS)
 
 # Cleaning everything
 clean:	

@@ -3,9 +3,9 @@ module numericalmethods
     contains
 
     subroutine solvedeterminant(inputmatrix,determinant)
-        real, dimension(:,:) :: inputmatrix
-        real, dimension(:,:), allocatable :: funcmat
-        real :: determinant
+        double precision, dimension(:,:) :: inputmatrix
+        double precision, dimension(:,:), allocatable :: funcmat
+        double precision :: determinant
         integer :: i,inputsize
         inputsize = size(inputmatrix,1)
         allocate(funcmat(inputsize,inputsize))
@@ -15,9 +15,9 @@ module numericalmethods
     end subroutine solvedeterminant
 
     function simpleinverse(A) result(B)
-        real,dimension(:,:) :: A
-        real,dimension(:,:),allocatable :: B,Cof
-        real :: dm
+        double precision,dimension(:,:) :: A
+        double precision,dimension(:,:),allocatable :: B,Cof
+        double precision :: dm
         integer :: i,j,k,n
 
         n = size(A,1)
@@ -31,9 +31,9 @@ module numericalmethods
     end function simpleinverse
 
     function cofactor(A,i,j) result(co)
-        real,dimension(:,:) :: A
-        real,dimension(:,:), allocatable :: B
-        real :: co
+        double precision,dimension(:,:) :: A
+        double precision,dimension(:,:), allocatable :: B
+        double precision :: co
         integer :: i,j,k,n
 
         n = size(A)
@@ -46,8 +46,8 @@ module numericalmethods
     function getminor(inputmatrix,i,j) result(minor)
         integer :: i,j
         integer :: m,p,q
-        real, dimension(:,:) :: inputmatrix
-        real, dimension(:,:), allocatable :: temp1,minor
+        double precision, dimension(:,:) :: inputmatrix
+        double precision, dimension(:,:), allocatable :: temp1,minor
         m = size(inputmatrix,1)
         allocate(temp1(m-1,m))
         allocate(minor(m-1,m-1))
@@ -74,8 +74,8 @@ module numericalmethods
     end function getminor
 
     function gaussiandeterminant(A) result(dm)
-        real, dimension(:,:) :: A
-        real :: dm
+        double precision, dimension(:,:) :: A
+        double precision :: dm
         integer :: i,j,n,p
         integer,dimension(1) :: maxl
         n = size(A,1)
@@ -117,8 +117,8 @@ module numericalmethods
     end function sortedbinarysearch
 
     subroutine gaussjordaninverse(inputmatrix,inversematrix)
-        real,dimension(:,:) :: inputmatrix, inversematrix
-        real,dimension(:,:),allocatable :: funcmat
+        double precision,dimension(:,:) :: inputmatrix, inversematrix
+        double precision,dimension(:,:),allocatable :: funcmat
         integer :: inputsize,i,j,k
 
         inputsize = size(inputmatrix,1)
@@ -128,9 +128,9 @@ module numericalmethods
     end subroutine gaussjordaninverse
 
     function nonpivotinverse(A,n) result(B)
-        real,dimension(:,:) :: A
-        real,dimension(:,:),allocatable :: B, C
-        real :: factor
+        double precision,dimension(:,:) :: A
+        double precision,dimension(:,:),allocatable :: B, C
+        double precision :: factor
         integer :: i,j,k,n,p
         integer,dimension(1) :: maxl
 
@@ -158,9 +158,9 @@ module numericalmethods
     end function nonpivotinverse
 
     function partialpivotedinverse(A,n) result(B)
-        real,dimension(:,:) :: A
-        real,dimension(:,:),allocatable :: B,C
-        real :: factor
+        double precision,dimension(:,:) :: A
+        double precision,dimension(:,:),allocatable :: B,C
+        double precision :: factor
         integer :: i,j,k,n,p
         integer,dimension(1) :: maxl
 
@@ -193,9 +193,9 @@ module numericalmethods
     end function partialpivotedinverse
 
     function pivot(A,i,j) result(M)
-        real,dimension(:,:) :: A
-        real,dimension(size(A,1),size(A,2)):: M
-        real,dimension(:),allocatable :: temprow
+        double precision,dimension(:,:) :: A
+        double precision,dimension(size(A,1),size(A,2)):: M
+        double precision,dimension(:),allocatable :: temprow
         integer :: i,j,rows,cols
 
         rows = size(A,1)
@@ -211,7 +211,7 @@ module numericalmethods
 
     function eye(n) result(U)
         integer :: n,i
-        real,dimension(:,:),allocatable :: U
+        double precision,dimension(:,:),allocatable :: U
         allocate(U(n,n))
         U = 0.0d0
         do i=1,n
@@ -221,10 +221,10 @@ module numericalmethods
     end function eye
 
     function ludecomp(A) result(B)
-        real,dimension(:,:) :: A
-        real,dimension(size(A,1),size(A,1)) :: B
+        double precision,dimension(:,:) :: A
+        double precision,dimension(size(A,1),size(A,1)) :: B
         integer :: i,j,k,n
-        real :: factor,innersum
+        double precision :: factor,innersum
 
         n = size(A,1)
         B = eye(n)

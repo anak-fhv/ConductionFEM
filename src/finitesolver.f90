@@ -9,11 +9,11 @@ module finitesolver
         integer,dimension(:),allocatable :: meshdetails,domainelements,elementnodes, &
         boundaryconditions, facenodes
         integer :: i,j,k, numno, numel, numdo, numbd, boundary, boundarytype, faceloc, co, bo, m,n
-        real :: boundaryval, facearea, elementvolume, tambient, generationrate
-        real,dimension(:,:),allocatable :: vertices, elementcoords, elementgradient,  &
+        double precision :: boundaryval, facearea, elementvolume, tambient, generationrate
+        double precision,dimension(:,:),allocatable :: vertices, elementcoords, elementgradient,  &
         conductivestiffness, convectivestiffness, elementstiffness, globalstiffness, stiffinv
-        real,dimension(:,:,:),allocatable :: conductivities,stels
-        real,dimension(:),allocatable :: boundaryvalues, elementforce, &
+        double precision,dimension(:,:,:),allocatable :: conductivities
+        double precision,dimension(:),allocatable :: boundaryvalues, elementforce, &
         elementflux,globalflux,temperature,temp2
         character(len=16), dimension(:), allocatable :: surfacenames
         logical :: generation
@@ -25,6 +25,7 @@ module finitesolver
         numel = meshdetails(2)
         numdo = meshdetails(6)
         numbd = meshdetails(7)
+        print *, 'Point 1'
         allocate(elementcoords(4,3))
         allocate(elementgradient(4,4))
         allocate(elementstiffness(4,4))
@@ -32,17 +33,15 @@ module finitesolver
         allocate(convectivestiffness(4,4))
         allocate(globalstiffness(numno,numno))
         allocate(stiffinv(numno,numno))
+        print *, 'Point 2'
         allocate(elementnodes(4))
         allocate(elementflux(4))
-        allocate(boundaryconditions(numbd))
-        allocate(boundaryvalues(numbd))
         allocate(temperature(numno))
         allocate(temp2(numno))
         allocate(globalflux(numno))
-        allocate(conductivities(numdo,3,3))
-        allocate(stels(numel,4,4))
+        print *, 'Point 3'
 
-!        globalstiffness = 0.0d0
+        globalstiffness = 0.0d0
         globalflux = 0.0d0
         temperature = 0.0d0
 
@@ -86,28 +85,10 @@ module finitesolver
                 end if
             end do
             elementstiffness = conductivestiffness + convectivestiffness
-            !call assembleglobalstiffness(elementstiffness, elementnodes, globalstiffness)
-            do co=1,4
-                do bo=1,4
-                    m = elementnodes(co)
-                    n = elementnodes(bo)
-!                    print *, 'm,n: ', m,n
-                    globalstiffness(m,n) = globalstiffness(m,n) + elementstiffness(co,bo)
-                end do
-            end do
+            call assembleglobalstiffness(elementstiffness, elementnodes, globalstiffness)
             if(generation) then
                 call getelementflux(elementgradient,generationrate,elementvolume,elementflux)
                 call assembleelementfluxes(globalflux,elementflux,elementnodes)
-            end if
-        end do
-        co = 0
-        bo = 0
-        do i= 1,numno
-            if(globalflux(i) == 0.0d0) then
-                co = co+1
-            end if
-            if(abs(vertices(i,3)) > 0.9999d0) then
-                bo = bo+1
             end if
         end do
     end subroutine finitesolution
@@ -117,8 +98,8 @@ module finitesolver
         integer, dimension(:,:), allocatable :: connectivity, surfacefaces
         integer, dimension(:), allocatable :: domainelements, meshdetails
         character(len=16), dimension(:), allocatable :: surfacenames
-        real, dimension(:,:), allocatable :: vertices
-        real, dimension(:), allocatable :: boundaryvalues
+        double precision, dimension(:,:), allocatable :: vertices
+        double precision, dimension(:), allocatable :: boundaryvalues
 
         allocate(meshdetails(7))
         call openmeshfile(unitnumber, '/home/anak/Documents/Old_Data/omg/trials/a.msh')
@@ -133,20 +114,20 @@ module finitesolver
     subroutine readboundaryconditions(meshdetails, boundaryconditions, &
     conductivities, boundaryvalues, tambient, generation, generationrate)
         integer,parameter :: datafilenum=222
-        character(len=*),parameter :: filename='/home/anak/Documents/Old_Data/omg/trials/datafile.dat'
+        character(len=*),parameter :: filename='datafile.dat'
         integer,dimension(7) :: meshdetails
         integer :: numdomains,numboundaries,i,j
         logical :: generation
-        integer,dimension(:) :: boundaryconditions
-        real :: tambient, generationrate
-        real,dimension(:) :: boundaryvalues
-        real,dimension(:,:,:) :: conductivities
+        integer,dimension(:),allocatable :: boundaryconditions
+        double precision :: tambient, generationrate
+        double precision,dimension(:),allocatable :: boundaryvalues
+        double precision,dimension(:,:,:),allocatable :: conductivities
 
         numdomains = meshdetails(6)
         numboundaries = meshdetails(7)
-!        allocate(conductivities(numdomains,3,3))
-!        allocate(boundaryconditions(numboundaries))
-!        allocate(boundaryvalues(numboundaries))
+        allocate(conductivities(numdomains,3,3))
+        allocate(boundaryconditions(numboundaries))
+        allocate(boundaryvalues(numboundaries))
         conductivities = 0
         boundaryvalues = 0.0d0
         boundaryconditions = 4
@@ -174,92 +155,9 @@ module finitesolver
         end if
     end subroutine readboundaryconditions
 
-    subroutine getboundaryconditions(surfacenames, boundaryconditions, boundaryvalues)
-        character(len=16), dimension(:) :: surfacenames
-        integer :: i
-        integer, dimension(:), allocatable :: boundaryconditions
-        real, dimension(:), allocatable :: boundaryvalues
-
-        allocate(boundaryconditions(size(surfacenames,1)))
-        allocate(boundaryvalues(size(surfacenames,1)))
-        print *, 'Please enter the type of boundary that each surface is.'
-        print *, 'Use 1 for a prescribed temperature boundary, 2 for a ', &
-        'prescribed flux boundary and 3 for a convective transfer boundary'
-        print *, 'Use 4 if this is an interface within the material.'
-        do i=1,size(surfacenames,1)
-            boundaryconditions(i) = getuserboundarycondition(surfacenames(i))
-            if(boundaryconditions(i) == 4) then
-                boundaryvalues(i) = 0.0
-            else
-                boundaryvalues(i) = getuserboundaryvalue(surfacenames(i),boundaryconditions(i))
-            end if
-        end do
-    end subroutine getboundaryconditions
-
-!This is a recursive function in order to force the user to choose the right
-!values for boundary condition types. Here, we parametrically use 1 for a
-!prescribed temperature BC, 2 for a prescribed flux and 3 for a prescribed
-!heat transfer coefficient. The BC 4 refers to an interface between phases.
-
-    recursive function getuserboundarycondition(surface) result(condition)
-        character(len=16) :: surface
-        integer :: condition
-        integer, dimension(4), parameter :: allowed_values = (/1,2,3,4/)
-
-        print *, 'Enter the type of boundary that ', trim(surface), ' is: '
-        read(*,'(i1)') condition
-        print *, 'Condition: ', condition
-        if(condition<1 .or. condition>4) then
-            print *, 'Error, type specified unrecognized. Retrying...'
-            condition = getuserboundarycondition(surface)
-        end if
-        return
-    end function getuserboundarycondition
-
-!This is a recursive function because we need to force the user to enter +ve
-!values of temperature.
-
-    recursive function getuserboundaryvalue(surface,condition) result(value)
-        character(len=16) :: surface
-        integer :: condition
-        real :: value
-
-        if(condition == 1) then
-            print *, 'Enter temperature at the boundary ', trim(surface)
-            read(*,*) value
-            if(value < 0.0) then
-                print *, 'Cannot prescribe a negative temperature. Retrying...'
-                value = getuserboundaryvalue(surface, condition)
-            end if
-        elseif(condition == 2) then
-            print *, 'Enter the value of flux at the boundary ', trim(surface), ' including the sign'
-            read(*,*) value
-        elseif(condition == 3) then
-            print *, 'Enter the value of the heat transfer coefficient at the boundary ', trim(surface)
-            read(*,*) value
-        end if
-        return
-    end function getuserboundaryvalue
-
-    subroutine getconductivities(numdomains,conductivities)
-        integer :: numdomains, i,j
-        real, dimension(:,:,:), allocatable :: conductivities
-
-        allocate(conductivities(numdomains,3,3))
-        do i=1,numdomains
-            do j=1,3
-                print *, 'Enter the conductivity row ', j, ' of the domain ', i
-                read(*,*) conductivities(i,j,:)
-            end do
-        end do
-
-    end subroutine getconductivities
-
-
-
     subroutine assembletemperature(temperature,facenumber,elementnodes,boundaryvalue)
-        real,dimension(:),intent(inout) :: temperature
-        real :: boundaryvalue
+        double precision,dimension(:),intent(inout) :: temperature
+        double precision :: boundaryvalue
         integer,dimension(4) :: elementnodes
         integer,dimension(3) :: facenodes
         integer :: facenumber
@@ -269,34 +167,28 @@ module finitesolver
     end subroutine assembletemperature
 
     subroutine getelementflux(elementgradient,boundaryval,facearea,elementflux)
-        real,dimension(4,4) :: elementgradient
-        real,dimension(4) :: elementflux
-        real :: boundaryval,facearea
-!        print *, 'Elementgradient: ', elementgradient(1,:)
-!        print *, 'boundaryval: ', boundaryval
-!        print *, 'Facearea: ', facearea
+        double precision,dimension(4,4) :: elementgradient
+        double precision,dimension(4) :: elementflux
+        double precision :: boundaryval,facearea
         elementflux = boundaryval*facearea*elementgradient(1,:)
-!        print *, 'Elementflux: ', elementflux
     end subroutine getelementflux
 
     subroutine assembleelementfluxes(globalflux,elementflux,elementnodes)
-        real,dimension(:),intent(inout) :: globalflux
-        real,dimension(4) :: elementflux
+        double precision,dimension(:),intent(inout) :: globalflux
+        double precision,dimension(4) :: elementflux
         integer,dimension(4) :: elementnodes
         integer :: i
-!        print *, 'GF: ', size(globalflux,1)
         do i=1,4
-!            print *, globalflux(elementnodes(i))
             globalflux(elementnodes(i)) = globalflux(elementnodes(i)) + elementflux(i)
         end do
     end subroutine assembleelementfluxes
 
     function getboundaryarea(coords,facenumber,faceloc) result(area)
-        real,dimension(4,3) :: coords
-        real,dimension(3,3):: facecoords
+        double precision,dimension(4,3) :: coords
+        double precision,dimension(3,3):: facecoords
         integer :: boundary, faceloc, facenumber
         integer,dimension(3) :: facenodes
-        real :: area
+        double precision :: area
         
         if(faceloc == 4) then
             print *, 'Face not recognized'
@@ -326,62 +218,46 @@ module finitesolver
     end function getfacenodeslocal
 
     subroutine getelementbasisdata(elementcoords, elementgradient, elementvolume)
-        real, dimension(4,3) :: elementcoords
-        real, dimension(4,4) :: volumematrix, elementgradient
-        real, dimension(3,3) :: minor
-        real :: elementvolume
-        integer :: i,j
-        integer,dimension(2,1) :: trial
+        integer,parameter :: m=4, n=4, lda=4, lwork=256
+        integer :: info
+        integer, dimension(m) :: ipiv
+        double precision, dimension(m) :: work
+        double precision, dimension(4,3) :: elementcoords
+        double precision, dimension(4,4) :: volumematrix, elementgradient
+        double precision, dimension(3,3) :: minor
+        double precision :: elementvolume
 
-        trial = reshape((/2,3/),(/2,1/))
-        elementvolume = 0.0d0
-        volumematrix = 0.0d0
-        volumematrix(1:4,2:4) = elementcoords
-        volumematrix(:,1) = 1.0d0
-        print *, 'volumematrix: '
-        print *, volumematrix(1,:)
-        print *, volumematrix(2,:)
-        print *, volumematrix(3,:)
-        print *, volumematrix(4,:)
-        call solvedeterminant(volumematrix, elementvolume)
-        elementvolume = abs(elementvolume/6.0d0)
-!        call gaussjordaninverse(volumematrix,elementgradient)
-        call getelementgradient(elementcoords,elementgradient)
-        elementgradient = transpose(elementgradient)/(6.0d0*elementvolume)
-        print *, 'Elementgradient: '
-        print *, elementgradient(1,:)
-        print *, elementgradient(2,:)
-        print *, elementgradient(3,:)
-        print *, elementgradient(4,:)
+        volumematrix(2:4,1:4) = transpose(elementcoords)
+        volumematrix(1,:) = 1.0d0
+        call dgetrf(m,n,volumematrix,lda,ipiv,info)
+        call dgetri(n,volumematrix,lda,ipiv,work,lwork,info)
+        elementgradient = volumematrix
     end subroutine getelementbasisdata
 
     subroutine getconductivestiffness(elementgradient,conductivity, conductivestiffness)
-        real, dimension(4,4) :: elementgradient, conductivestiffness
-        real, dimension(4,3) :: intermediate
-        real, dimension(3,3) :: conductivity
+        double precision, dimension(4,4) :: elementgradient, conductivestiffness
+        double precision, dimension(4,3) :: intermediate
+        double precision, dimension(3,3) :: conductivity
 
         intermediate = matmul(transpose(elementgradient(2:4,:)),conductivity)
         conductivestiffness = matmul(intermediate,elementgradient(2:4,:))
     end subroutine getconductivestiffness
 
     subroutine getconvectivestiffness(elementgradient,area,hvalue,convectivestiffness)
-        real, dimension(4,3) :: elementcoords
-        real, dimension(4,4) :: elementgradient, convectivestiffness
-        real :: hvalue, area
+        double precision, dimension(4,3) :: elementcoords
+        double precision, dimension(4,4) :: elementgradient, convectivestiffness
+        double precision :: hvalue, area
         integer :: j
 
         convectivestiffness = hvalue*area*matmul(transpose(elementgradient(1:1,:)),elementgradient(1:1,:))
     end subroutine getconvectivestiffness
 
     subroutine assembleglobalstiffness(elementstiffness, elementnodes, globalstiffness)
-        real, dimension(4,4) :: elementstiffness
-        real, dimension(:,:), intent(inout) :: globalstiffness
+        double precision, dimension(4,4) :: elementstiffness
+        double precision, dimension(:,:), intent(inout) :: globalstiffness
         integer, dimension(4) :: elementnodes
         integer :: i,j,m,n
 
-        print *, 'Globalstiffness: '
-        print *, globalstiffness(elementnodes(1),elementnodes(1))
-        print *, globalstiffness(elementnodes(4),elementnodes(4))
         do i=1,4
             m = elementnodes(i)
             do j=1,4
@@ -389,9 +265,6 @@ module finitesolver
                 globalstiffness(m,n) = globalstiffness(m,n) + elementstiffness(i,j)
             end do
         end do
-        print *, 'Globalstiffness modified?'
-        print *, globalstiffness(elementnodes(1),elementnodes(1))
-        print *, globalstiffness(elementnodes(4),elementnodes(4))
     end subroutine assembleglobalstiffness
 
     function getfacelocationindex(bnum,surfacenames) result(faceloc)
@@ -409,32 +282,5 @@ module finitesolver
         end if
     end function getfacelocationindex
 
-    subroutine getelementgradient(E,G)
-        real,dimension(4,3) :: E
-        real,dimension(4,4) :: G
-
-        G(1,1) = E(2,1)*(E(3,2)*E(4,3)-E(4,2)*E(3,3)) - E(2,2)*(E(3,1)*E(4,3)-E(4,1)*E(3,3)) + E(2,3)*(E(3,1)*E(4,2)-E(4,1)*E(3,2))
-        G(1,2) = E(3,1)*(E(4,2)*E(1,3)-E(1,2)*E(4,3)) - E(3,2)*(E(4,1)*E(1,3)-E(1,1)*E(4,3)) + E(3,3)*(E(4,1)*E(1,2)-E(1,1)*E(4,2))
-        G(1,3) = E(4,1)*(E(1,2)*E(2,3)-E(2,2)*E(1,3)) - E(4,2)*(E(1,1)*E(2,3)-E(2,1)*E(1,3)) + E(4,3)*(E(1,1)*E(2,2)-E(2,1)*E(1,2))
-        G(1,4) = E(1,1)*(E(2,2)*E(3,3)-E(3,2)*E(2,3)) - E(1,2)*(E(2,1)*E(3,3)-E(3,1)*E(2,3)) + E(1,3)*(E(2,1)*E(3,2)-E(3,1)*E(2,2))
-
-        G(2,1) = (E(2,2)-E(4,2))*(E(3,3)-E(4,3)) - (E(3,2)-E(4,2))*(E(2,3)-E(4,3))
-        G(2,2) = (E(3,2)-E(4,2))*(E(1,3)-E(4,3)) - (E(1,2)-E(4,2))*(E(3,3)-E(4,3))
-        G(2,3) = (E(1,2)-E(4,2))*(E(2,3)-E(4,3)) - (E(2,2)-E(4,2))*(E(1,3)-E(4,3))
-        G(2,4) = (G(2,1) + G(2,2) + G(2,3))
-
-        G(3,1) = (E(3,1)-E(4,1))*(E(2,3)-E(4,3)) - (E(2,1)-E(4,1))*(E(3,3)-E(4,3))
-        G(3,2) = (E(1,1)-E(4,1))*(E(3,3)-E(4,3)) - (E(3,1)-E(4,1))*(E(1,3)-E(4,3))
-        G(3,3) = (E(2,1)-E(4,1))*(E(1,3)-E(4,3)) - (E(1,1)-E(4,1))*(E(2,3)-E(4,3))
-        G(3,4) = -(G(3,1) + G(3,2) + G(3,3))
-
-        G(4,1) = (E(2,1)-E(4,1))*(E(3,2)-E(4,2)) - (E(3,1)-E(4,1))*(E(2,2)-E(4,2))
-        G(4,2) = (E(3,1)-E(4,1))*(E(1,2)-E(4,2)) - (E(1,1)-E(4,1))*(E(3,2)-E(4,2))
-        G(4,3) = (E(1,1)-E(4,1))*(E(2,2)-E(4,2)) - (E(2,1)-E(4,1))*(E(1,2)-E(4,2))
-        G(4,4) = -(G(4,1) + G(4,2) + G(4,3))
-    end subroutine getelementgradient
-
-    subroutine getelementforcecomponent()
-    end subroutine getelementforcecomponent
 
 end module finitesolver
