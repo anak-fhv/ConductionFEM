@@ -55,9 +55,9 @@ module readmesh
         integer, dimension(:), allocatable :: domainelements
 
         allocate(domainelements(meshdetails(2)))
+        tempmat = 0
         do i=1,meshdetails(6)
             read(unitnumber,'(i8)') domainsize
-
             if(mod(domainsize,10) == 0) then
                 countersize = domainsize/10
             else
@@ -67,7 +67,7 @@ module readmesh
                 read(unitnumber,'(10(1x,i8))') tempmat
                 do k=1,10
                     if(tempmat(k) /= 0) then
-                        domainelements(tempmat) = i
+                        domainelements(tempmat(k)) = i
                     end if
                 end do
             end do

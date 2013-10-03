@@ -11,10 +11,10 @@ module finitesolver
         integer :: i,j,k, numno, numel, numdo, numbd, boundary, boundarytype, faceloc, co, bo, m,n
         double precision :: boundaryval, facearea, elementvolume, tambient, generationrate
         double precision,dimension(:,:),allocatable :: vertices, elementcoords, elementgradient,  &
-        conductivestiffness, convectivestiffness, elementstiffness, globalstiffness, stiffinv
+        conductivestiffness, convectivestiffness, elementstiffness, globalstiffness
         double precision,dimension(:,:,:),allocatable :: conductivities
         double precision,dimension(:),allocatable :: boundaryvalues, elementforce, &
-        elementflux,globalflux,temperature,temp2
+        elementflux,globalflux,temperature
         character(len=16), dimension(:), allocatable :: surfacenames
         logical :: generation
 
@@ -31,11 +31,9 @@ module finitesolver
         allocate(conductivestiffness(4,4))
         allocate(convectivestiffness(4,4))
         allocate(globalstiffness(numno,numno))
-        allocate(stiffinv(numno,numno))
         allocate(elementnodes(4))
         allocate(elementflux(4))
         allocate(temperature(numno))
-        allocate(temp2(numno))
         allocate(globalflux(numno))
 
         globalstiffness = 0.0d0
@@ -94,12 +92,19 @@ module finitesolver
     subroutine solvefinalequations(globalstiffness,globalflux,temperature)
         double precision, dimension(:,:) :: globalstiffness
         double precision, dimension(:) :: globalflux, temperature
-        integer :: m, n, info, lda, ldb, nrhs
+        integer :: i, j, k, m, n, info, lda, ldb, nrhs
         integer, dimension(:), allocatable :: ipiv
         character :: trans='N'
 
         m = size(globalstiffness,1)
         n = size(globalstiffness,2)
+        do i=1,m
+            if(temperature(i) /= 0.0) then
+                globalstiffness(i,:) = 0.0d0
+                globalstiffness(i,i) = 1.0d0
+                globalflux(i) = temperature(i)
+            end if
+        end do
         lda = m
         ldb = m
         nrhs = 1
@@ -107,6 +112,11 @@ module finitesolver
         call dgesv(m, nrhs, globalstiffness, lda, ipiv, globalflux, ldb, info)
         print *, 'Info: ', info
         temperature = globalflux
+        do i=1,m
+            if(temperature(i) /= 0.0d0) then
+                print *, 'Temperature(', i, '): ', temperature(i)
+            end if
+        end do
     end subroutine solvefinalequations
 
     subroutine getmeshdata(meshdetails,vertices,connectivity,domainelements,surfacenames,surfacefaces)
@@ -116,9 +126,8 @@ module finitesolver
         character(len=16), dimension(:), allocatable :: surfacenames
         double precision, dimension(:,:), allocatable :: vertices
         double precision, dimension(:), allocatable :: boundaryvalues
-
         allocate(meshdetails(7))
-        call openmeshfile(unitnumber, '/home/anak/Documents/Old_Data/omg/trials/a.msh')
+        call openmeshfile(unitnumber, '/home/anak/Documents/Old_Data/omg/trials/cube_big_tetra.msh')
         call readmeshdetails(unitnumber, meshdetails)
         call readmeshvertices(unitnumber, meshdetails, vertices)
         call readmeshconnectivity(unitnumber, meshdetails, connectivity)
@@ -243,11 +252,12 @@ module finitesolver
         double precision, dimension(3,3) :: minor
         double precision :: elementvolume
 
-        volumematrix(2:4,1:4) = transpose(elementcoords)
-        volumematrix(1,:) = 1.0d0
-        call dgetrf(m,n,volumematrix,lda,ipiv,info)
-        call dgetri(n,volumematrix,lda,ipiv,work,lwork,info)
-        elementgradient = volumematrix
+        elementgradient(2:4,1:4) = transpose(elementcoords)
+        elementgradient(1,:) = 1.0d0
+        volumematrix = elementgradient
+        call dgetrf(m,n,elementgradient,lda,ipiv,info)
+        call dgetri(n,elementgradient,lda,ipiv,work,lwork,info)
+        print *, matmul(volumematrix,elementgradient)
     end subroutine getelementbasisdata
 
     subroutine getconductivestiffness(elementgradient,conductivity, conductivestiffness)

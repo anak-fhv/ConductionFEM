@@ -11,7 +11,6 @@ module numericalmethods
         allocate(funcmat(inputsize,inputsize))
         funcmat = inputmatrix
         determinant = gaussiandeterminant(funcmat)
-        deallocate(funcmat)
     end subroutine solvedeterminant
 
     function simpleinverse(A) result(B)
@@ -154,7 +153,6 @@ module numericalmethods
             end do
         end do
         B = C(1:n,n+1:2*n)
-        deallocate(C)
     end function nonpivotinverse
 
     function partialpivotedinverse(A,n) result(B)
@@ -189,7 +187,6 @@ module numericalmethods
             end do
         end do
         B = C(:,n+1:2*n)
-        deallocate(C)
     end function partialpivotedinverse
 
     function pivot(A,i,j) result(M)
@@ -205,7 +202,6 @@ module numericalmethods
         temprow = M(j,:)
         M(j,:) = M(i,:)
         M(i,:) = temprow
-        deallocate(temprow)
         return
     end function pivot
 
