@@ -86,37 +86,95 @@ module finitesolver
                 call assembleelementfluxes(globalflux,elementflux,elementnodes)
             end if
         end do
+        open(333,file="globalstiffness.out")
+        write(333,*) 'Global stiffness'
+        write(333,*) ''
+        do i=1,numno
+            write(333,'(930(f12.6))') globalstiffness(i,:)
+        end do
+        write(333,*) 'Temperatures'
+        do i=1,numno
+            write(333,'(f12.6)') temperature(i)
+        end do
+
         call solvefinalequations(globalstiffness,globalflux,temperature)
+        close(333)
     end subroutine finitesolution
 
     subroutine solvefinalequations(globalstiffness,globalflux,temperature)
         double precision, dimension(:,:) :: globalstiffness
+        double precision, dimension(:,:), allocatable :: newstiffness
         double precision, dimension(:) :: globalflux, temperature
-        integer :: i, j, k, m, n, info, lda, ldb, nrhs
-        integer, dimension(:), allocatable :: ipiv
+        double precision, dimension(:), allocatable :: newflux
+        integer :: i, j, k, m, n, info, lda, ldb, nrhs,ct,ind
+        integer, dimension(:), allocatable :: ipiv,local
         character :: trans='N'
+        logical :: inthere
 
         m = size(globalstiffness,1)
         n = size(globalstiffness,2)
-        do i=1,m
-            if(temperature(i) /= 0.0) then
-                globalstiffness(i,:) = 0.0d0
-                globalstiffness(i,i) = 1.0d0
-                globalflux(i) = temperature(i)
-            end if
-        end do
-        lda = m
-        ldb = m
-        nrhs = 1
-        allocate(ipiv(m))
-        call dgesv(m, nrhs, globalstiffness, lda, ipiv, globalflux, ldb, info)
-        print *, 'Info: ', info
-        temperature = globalflux
+        j = 0
+
         do i=1,m
             if(temperature(i) /= 0.0d0) then
-                print *, 'Temperature(', i, '): ', temperature(i)
+                j=j+1
             end if
         end do
+
+        allocate(newstiffness(m-j,m-j))
+        allocate(newflux(m-j))
+        allocate(local(j))
+
+        k=0
+        ct=0
+
+        do i=1,m
+            globalflux(i) = globalflux(i)-sum(matmul(globalstiffness(i:i,1:m),temperature))
+            print *, 'i: ', 'globalflux: ', globalflux(i)
+            if(temperature(i) /= 0.0) then
+                ct=ct+1
+                local(ct) = i
+            else
+                k=k+1
+                newflux(k) = globalflux(i)
+            end if
+        end do
+!
+!        do i=1,m
+!            print *, globalflux(i)
+!        end do
+
+        print *, 'Local ct: ', j
+        print *, local
+
+        ind=0
+
+        do i=1,m
+            inthere = .true.
+            do k=1,j
+                if(i==local(k)) then
+                    inthere = .false.
+                    exit
+                end if
+            end do
+
+            if(inthere.eqv..false.) then
+                ind=ind+1
+                newstiffness(:,ind) = globalstiffness(1:m-j,i)
+            end if
+        end do
+
+        temperature = 0.0d0
+        lda = m-j
+        ldb = m-j
+        nrhs = 1
+        allocate(ipiv(m-j))
+!        call dgesv(m, nrhs, globalstiffness, lda, ipiv, globalflux, ldb, info)
+        call dgesv(m-j, nrhs, newstiffness, lda, ipiv, newflux, ldb, info)
+!        do i=1,m-j
+!            print *, newflux(i)
+!        end do
+        temperature = globalflux
     end subroutine solvefinalequations
 
     subroutine getmeshdata(meshdetails,vertices,connectivity,domainelements,surfacenames,surfacefaces)
@@ -127,7 +185,7 @@ module finitesolver
         double precision, dimension(:,:), allocatable :: vertices
         double precision, dimension(:), allocatable :: boundaryvalues
         allocate(meshdetails(7))
-        call openmeshfile(unitnumber, '/home/anak/Documents/Old_Data/omg/trials/cube_big_tetra.msh')
+        call openmeshfile(unitnumber, '/home/anak/Documents/Old_Data/omg/trials/a.msh')
         call readmeshdetails(unitnumber, meshdetails)
         call readmeshvertices(unitnumber, meshdetails, vertices)
         call readmeshconnectivity(unitnumber, meshdetails, connectivity)
@@ -244,7 +302,7 @@ module finitesolver
 
     subroutine getelementbasisdata(elementcoords, elementgradient, elementvolume)
         integer,parameter :: m=4, n=4, lda=4, lwork=256
-        integer :: info
+        integer :: info,i
         integer, dimension(m) :: ipiv
         double precision, dimension(m) :: work
         double precision, dimension(4,3) :: elementcoords
@@ -252,12 +310,11 @@ module finitesolver
         double precision, dimension(3,3) :: minor
         double precision :: elementvolume
 
-        elementgradient(2:4,1:4) = transpose(elementcoords)
-        elementgradient(1,:) = 1.0d0
-        volumematrix = elementgradient
-        call dgetrf(m,n,elementgradient,lda,ipiv,info)
-        call dgetri(n,elementgradient,lda,ipiv,work,lwork,info)
-        print *, matmul(volumematrix,elementgradient)
+        call getelementgradient(elementcoords,elementgradient)
+        volumematrix(:,2:4) = elementcoords
+        volumematrix(:,1) = 1.0d0
+        call getelementvolume(volumematrix, elementvolume)
+        elementgradient = elementgradient/elementvolume
     end subroutine getelementbasisdata
 
     subroutine getconductivestiffness(elementgradient,conductivity, conductivestiffness)
@@ -265,7 +322,7 @@ module finitesolver
         double precision, dimension(4,3) :: intermediate
         double precision, dimension(3,3) :: conductivity
 
-        intermediate = matmul(transpose(elementgradient(2:4,:)),conductivity)
+        intermediate = matmul((transpose(elementgradient(2:4,:))),conductivity)
         conductivestiffness = matmul(intermediate,elementgradient(2:4,:))
     end subroutine getconductivestiffness
 
@@ -308,5 +365,45 @@ module finitesolver
         end if
     end function getfacelocationindex
 
+    subroutine getelementgradient(E,G)
+        double precision,dimension(4,3) :: E
+        double precision,dimension(4,4) :: G
+
+        G(1,1) = E(2,1)*(E(3,2)*E(4,3)-E(4,2)*E(3,3)) - E(2,2)*(E(3,1)*E(4,3)-E(4,1)*E(3,3)) + E(2,3)*(E(3,1)*E(4,2)-E(4,1)*E(3,2))
+        G(1,2) = E(3,1)*(E(4,2)*E(1,3)-E(1,2)*E(4,3)) - E(3,2)*(E(4,1)*E(1,3)-E(1,1)*E(4,3)) + E(3,3)*(E(4,1)*E(1,2)-E(1,1)*E(4,2))
+        G(1,3) = E(4,1)*(E(1,2)*E(2,3)-E(2,2)*E(1,3)) - E(4,2)*(E(1,1)*E(2,3)-E(2,1)*E(1,3)) + E(4,3)*(E(1,1)*E(2,2)-E(2,1)*E(1,2))
+        G(1,4) = E(1,1)*(E(2,2)*E(3,3)-E(3,2)*E(2,3)) - E(1,2)*(E(2,1)*E(3,3)-E(3,1)*E(2,3)) + E(1,3)*(E(2,1)*E(3,2)-E(3,1)*E(2,2))
+
+        G(2,1) = (E(2,2)-E(4,2))*(E(3,3)-E(4,3)) - (E(3,2)-E(4,2))*(E(2,3)-E(4,3))
+        G(2,2) = (E(3,2)-E(4,2))*(E(1,3)-E(4,3)) - (E(1,2)-E(4,2))*(E(3,3)-E(4,3))
+        G(2,3) = (E(1,2)-E(4,2))*(E(2,3)-E(4,3)) - (E(2,2)-E(4,2))*(E(1,3)-E(4,3))
+        G(2,4) = (G(2,1) + G(2,2) + G(2,3))
+
+        G(3,1) = (E(3,1)-E(4,1))*(E(2,3)-E(4,3)) - (E(2,1)-E(4,1))*(E(3,3)-E(4,3))
+        G(3,2) = (E(1,1)-E(4,1))*(E(3,3)-E(4,3)) - (E(3,1)-E(4,1))*(E(1,3)-E(4,3))
+        G(3,3) = (E(2,1)-E(4,1))*(E(1,3)-E(4,3)) - (E(1,1)-E(4,1))*(E(2,3)-E(4,3))
+        G(3,4) = -(G(3,1) + G(3,2) + G(3,3))
+
+        G(4,1) = (E(2,1)-E(4,1))*(E(3,2)-E(4,2)) - (E(3,1)-E(4,1))*(E(2,2)-E(4,2))
+        G(4,2) = (E(3,1)-E(4,1))*(E(1,2)-E(4,2)) - (E(1,1)-E(4,1))*(E(3,2)-E(4,2))
+        G(4,3) = (E(1,1)-E(4,1))*(E(2,2)-E(4,2)) - (E(2,1)-E(4,1))*(E(1,2)-E(4,2))
+        G(4,4) = -(G(4,1) + G(4,2) + G(4,3))
+    end subroutine getelementgradient
+
+    subroutine getelementvolume(EM,V)
+        double precision,dimension(4,4) :: EM
+        double precision :: V
+
+        V =  EM(1,1)*(EM(2,2)*(EM(3,3)*EM(4,4)-EM(3,4)*EM(4,3))+    &
+        EM(2,3)*(EM(3,4)*EM(4,2)-EM(3,2)*EM(4,4))+EM(2,4)*(EM(3,2)*EM(4,3)-     &
+        EM(3,3)*EM(4,2)))-EM(1,2)*(EM(2,1)*(EM(3,3)*EM(4,4)-EM(3,4)*EM(4,3))+   &
+        EM(2,3)*(EM(3,4)*EM(4,1)-EM(3,1)*EM(4,4))+ EM(2,4)*(EM(3,1)*EM(4,3)-    &
+        EM(3,3)*EM(4,1)))+EM(1,3)*(EM(2,1)*(EM(3,2)*EM(4,4)-EM(3,4)*EM(4,2))+   &
+        EM(2,2)*(EM(3,4)*EM(4,1)-EM(3,1)*EM(4,4))+EM(2,4)*(EM(3,1)*EM(4,2)-     &
+        EM(3,2)*EM(4,1)))-EM(1,4)*(EM(2,1)*(EM(3,2)*EM(4,3)-EM(3,3)*EM(4,2))+   &
+        EM(2,2)*(EM(3,3)*EM(4,1)-EM(3,1)*EM(4,3))+EM(2,3)*(EM(3,1)*EM(4,2)-EM(3,2)*EM(4,1)))
+
+        V = abs(V)
+    end subroutine getelementvolume
 
 end module finitesolver
