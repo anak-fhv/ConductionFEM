@@ -90,7 +90,7 @@ module finitesolver
         write(333,*) 'Global stiffness'
         write(333,*) ''
         do i=1,numno
-            write(333,'(930(f12.6))') globalstiffness(i,:)
+            write(333,'(27(f12.6))') globalstiffness(i,:)
         end do
         write(333,*) 'Temperatures'
         do i=1,numno
@@ -103,9 +103,10 @@ module finitesolver
 
     subroutine solvefinalequations(globalstiffness,globalflux,temperature)
         double precision, dimension(:,:) :: globalstiffness
-        double precision, dimension(:,:), allocatable :: newstiffness
+        double precision, dimension(:,:), allocatable :: newstiffness, tempstiffness
         double precision, dimension(:) :: globalflux, temperature
-        double precision, dimension(:), allocatable :: newflux
+        double precision, dimension(:), allocatable :: newflux, tempmat
+        double precision :: rhsval
         integer :: i, j, k, m, n, info, lda, ldb, nrhs,ct,ind
         integer, dimension(:), allocatable :: ipiv,local
         character :: trans='N'
@@ -121,60 +122,72 @@ module finitesolver
             end if
         end do
 
+        print *, 'size: ', m-j
+        allocate(tempstiffness(m,m-j))
         allocate(newstiffness(m-j,m-j))
         allocate(newflux(m-j))
         allocate(local(j))
 
-        k=0
-        ct=0
-
+        j = 0
+        rhsval = 0.0d0
         do i=1,m
-            globalflux(i) = globalflux(i)-sum(matmul(globalstiffness(i:i,1:m),temperature))
-            print *, 'i: ', 'globalflux: ', globalflux(i)
-            if(temperature(i) /= 0.0) then
-                ct=ct+1
-                local(ct) = i
+            if(temperature(i) /= 0.0d0) then
+                continue
             else
-                k=k+1
-                newflux(k) = globalflux(i)
+                j = j+1
+                rhsval = 0.0d0
+                do ct=1,m
+                    if(ct == i) then
+                        continue
+                    else
+                        rhsval = rhsval + globalstiffness(i,ct)*temperature(ct)
+                    end if
+                end do
+                newflux(j) = -rhsval
             end if
         end do
-!
-!        do i=1,m
-!            print *, globalflux(i)
-!        end do
 
-        print *, 'Local ct: ', j
-        print *, local
+        print *, 'size newflux: ', size(newflux,1)
 
-        ind=0
-
+        j=0
         do i=1,m
-            inthere = .true.
-            do k=1,j
-                if(i==local(k)) then
-                    inthere = .false.
-                    exit
-                end if
-            end do
-
-            if(inthere.eqv..false.) then
-                ind=ind+1
-                newstiffness(:,ind) = globalstiffness(1:m-j,i)
+            if(temperature(i) /= 0.0d0) then
+                continue
+            else
+                j=j+1
+                ind = 0
+                do ct=1,m
+                    if(temperature(ct) /= 0.0d0) then
+                        continue
+                    else
+                        ind = ind+1
+                        newstiffness(j,ind) = globalstiffness(i,ct)
+                    end if
+                end do
             end if
         end do
 
-        temperature = 0.0d0
+        open(333,file="globalstiffness.out",status="old",position="append")
+        write(333,*) 'New stiffness'
+        write(333,*) ''
+        do i=1,size(newflux,1)
+            write(333,'(30(f12.6))') newstiffness(i,:)
+        end do
+        write(333,*) 'New flux'
+        write(333,*) ''
+        do i=1,size(newflux,1)
+            write(333,'(f12.6)') newflux(i)
+        end do
+        close(333)
         lda = m-j
         ldb = m-j
         nrhs = 1
-        allocate(ipiv(m-j))
+!        allocate(ipiv(m-j))
 !        call dgesv(m, nrhs, globalstiffness, lda, ipiv, globalflux, ldb, info)
-        call dgesv(m-j, nrhs, newstiffness, lda, ipiv, newflux, ldb, info)
+!        call dgesv(m-j, nrhs, newstiffness, lda, ipiv, newflux, ldb, info)
 !        do i=1,m-j
 !            print *, newflux(i)
 !        end do
-        temperature = globalflux
     end subroutine solvefinalequations
 
     subroutine getmeshdata(meshdetails,vertices,connectivity,domainelements,surfacenames,surfacefaces)
