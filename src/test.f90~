@@ -1,9 +1,0 @@
-program test
-    use finiteanalysis
-    implicit none
-!    call finitesolution()
-	character(len=10) :: ch
-	integer :: bt,i
-	real(8) :: bv
-
-end program test
