@@ -2,23 +2,21 @@
 
 # Makefile variables
 FC		 = ifort
-LIBPATH = /opt/intel/composer_xe_2013.5.192/mkl/lib/intel64
-LIBS	:= \
-  			$(LIBPATH)/libmkl_scalapack_lp64.a \
-  			$(LIBPATH)/libmkl_intel_lp64.a \
-  			$(LIBPATH)/libmkl_blacs_openmpi_lp64.a \
-  			$(LIBPATH)/libmkl_core.a  \
-  			$(LIBPATH)/libmkl_sequential.a \
-  			$(LIBPATH)/libmkl_core.a  \
-  			$(LIBPATH)/libmkl_sequential.a \
-  			$(LIBPATH)/libmkl_core.a  \
-  			-lpthread
-FCFLAGS = -g -CB
+FCFLAGS	 = -g -openmp -mkl -traceback
 VPATH	:= src
 OBJDIR	:= ../obj
+LIBPATH := /opt/intel/mkl/lib/intel64
+LIBS := 	$(LIBPATH)/libmkl_intel_lp64.a \
+  			$(LIBPATH)/libmkl_core.a  \
+  			$(LIBPATH)/libmkl_sequential.a \
+  			$(LIBPATH)/libmkl_core.a  \
+  			$(LIBPATH)/libmkl_sequential.a \
+  			$(LIBPATH)/libmkl_core.a  \
+			$(LIBPATH)/libmkl_intel_ilp64.a \
+  			-lpthread
 
 # All compiled output
-OBJECTS	:= $(OBJDIR)/test.o $(OBJDIR)/finitesolver.o $(OBJDIR)/readmesh.o $(OBJDIR)/numericalmethods.o
+OBJECTS	:= $(OBJDIR)/test.o $(OBJDIR)/conductionfem.o $(OBJDIR)/readmesh.o $(OBJDIR)/elementcalculations.o
 
 # Make all target
 all: $(OBJECTS)
@@ -27,21 +25,22 @@ all: $(OBJECTS)
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-$(OBJDIR)/test.o: $(OBJDIR)/finitesolver.o $(OBJDIR)/readmesh.o $(OBJDIR)/numericalmethods.o | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -c test.f90 -o $(OBJDIR)/test.o
+$(OBJDIR)/test.o: $(OBJDIR)/conductionfem.o $(OBJDIR)/readmesh.o $(OBJDIR)/elementcalculations.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -c test.f90 -o $(OBJDIR)/test.o 
 
-$(OBJDIR)/finitesolver.o: $(OBJDIR)/readmesh.o $(OBJDIR)/numericalmethods.o | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c finitesolver.f90 -o $(OBJDIR)/finitesolver.o
+$(OBJDIR)/conductionfem.o: $(OBJDIR)/readmesh.o $(OBJDIR)/elementcalculations.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c conductionfem.f90 -o $(OBJDIR)/conductionfem.o
 
-$(OBJDIR)/readmesh.o: $(OBJDIR)/numericalmethods.o | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c readmesh.f90 -o $(OBJDIR)/readmesh.o
+$(OBJDIR)/readmesh.o: $(OBJDIR)/elementcalculations.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c readmesh.f90 -o $(OBJDIR)/readmesh.o 
 
-$(OBJDIR)/numericalmethods.o: | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c numericalmethods.f90 -o $(OBJDIR)/numericalmethods.o
+$(OBJDIR)/elementcalculations.o: | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c elementcalculations.f90 -o $(OBJDIR)/elementcalculations.o
 
 # Cleaning everything
 clean:	
 	rm -rf $(OBJDIR)
+	rm -rf *.out
 	rm -rf *.o *.mod test
 
 # End of the makefile

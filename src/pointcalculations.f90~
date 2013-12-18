@@ -1,0 +1,22 @@
+module pointcalculations
+
+	use elementcalculations
+
+	implicit none
+	contains
+
+	subroutine barycentric(p,ec,vb)
+		double precision,dimension(4,3) :: ec
+		double precision,dimension(4,4) :: vm
+		double precision,dimension(3) :: p
+		double precision,dimension(4) :: vbs
+		double precision :: ev
+		integer :: i,j,k
+
+		vm(:,2:4) = ec
+		vm(:,1) = 1.0d0
+		ev = abs(det4(vm))
+
+	end subroutine barycentric
+
+end module pointcalculations

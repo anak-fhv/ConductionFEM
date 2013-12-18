@@ -1,5 +1,4 @@
 module readmesh
-    use numericalmethods
     implicit none
     contains
 
@@ -37,8 +36,6 @@ module readmesh
         end do
     end subroutine readmeshvertices
 
-! This subroutine has been written only for a tetrahedral element mesh
-
     subroutine readmeshconnectivity(unitnumber, meshdetails, connectivity)
         integer :: unitnumber,i
         integer, dimension(7) :: meshdetails
@@ -50,9 +47,6 @@ module readmesh
         end do
     end subroutine readmeshconnectivity
 
-! This subroutine simply notes on each element of the mesh the domain to
-! which it belongs. So it is an n x 1 array.
-
     subroutine readmeshdomains(unitnumber, meshdetails, domainelements)
         integer :: unitnumber,domainsize,countersize,i,j,k
         integer, dimension(7) :: meshdetails
@@ -60,9 +54,9 @@ module readmesh
         integer, dimension(:), allocatable :: domainelements
 
         allocate(domainelements(meshdetails(2)))
-        tempmat = 0
         do i=1,meshdetails(6)
             read(unitnumber,'(i8)') domainsize
+
             if(mod(domainsize,10) == 0) then
                 countersize = domainsize/10
             else
@@ -78,11 +72,6 @@ module readmesh
             end do
         end do
     end subroutine readmeshdomains
-
-! This subroutine has been written only for tetrahedral elements. It uses
-! an n x 4 array, and on each ith member of this array, for each of the 4
-! tetrahedron faces, it notes a 0 if the face is not on a boundary or the
-! boundary number (as sequentially occurs) if it is on a boundary
 
     subroutine readmeshsurfaces(unitnumber, meshdetails, surfacefaces, surfacenames)
         integer :: unitnumber,surfnum,countersize,i,j,k, currentsize, newsize, oldsize

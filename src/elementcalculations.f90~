@@ -1,0 +1,106 @@
+module elementcalculations
+	implicit none
+	contains
+	
+	subroutine shapefunctions(ec,v6,sp)
+		double precision,dimension(4,3) :: ec
+		double precision,dimension(4,4) :: sp,vm
+		double precision,dimension(3,3) :: ed
+		double precision :: v6
+		integer :: i,j,k
+
+		vm(:,2:4) = ec
+		vm(:,1) = 1.0d0
+		v6 = det4(vm)
+		call invertcoords(vm)
+		sp = transpose(vm);
+		
+	end subroutine shapefunctions
+
+	subroutine invertcoords(vm)
+		double precision,dimension(4,4) :: vm
+		double precision,dimension(256) :: work
+		integer,dimension(4) :: ipiv
+		integer,parameter :: m=4,n=4,lda=4,lwork=256
+		integer :: info
+
+		call dgetrf(m,n,vm,lda,ipiv,info)
+		call dgetri(m,vm,lda,ipiv,work,lwork,info)
+	end subroutine invertcoords
+
+	subroutine elementstiffness(sp,ev,elk,btdb)
+		double precision,dimension(4,4) :: sp,btdb
+		double precision,dimension(4,3) :: bt
+		double precision,dimension(3,4) :: b
+		double precision :: ev,elk
+		
+		bt = sp(:,2:4)
+		b = transpose(bt)
+		btdb = elk*(matmul(bt,b))*(ev/6.0d0)
+		
+	end subroutine elementstiffness
+
+	subroutine bfacenodes(el,elnodes,fc,fcnodes)
+		integer :: el,fc
+		integer,dimension(4) :: elnodes
+		integer,dimension(3) :: fcnodes
+
+		if(fc == 1) then
+			fcnodes = elnodes(1:3)
+		elseif(fc == 2) then
+			fcnodes = (/elnodes(1),elnodes(2),elnodes(4)/)
+		elseif(fc == 3) then
+			fcnodes = elnodes(2:4)
+		elseif(fc == 4) then
+			fcnodes = (/elnodes(1),elnodes(3),elnodes(4)/)
+		end if
+	end subroutine bfacenodes
+
+	subroutine fluxboundary(el,elnodes,sp,fflux)
+	end subroutine fluxboundary
+
+	subroutine convectiveboundary(el,elnodes,sp,convstiff,cflux)
+	end subroutine convectiveboundary
+
+	function detcreate(ec,pos1,pos2) result(vald)
+		double precision,dimension(4,3) :: ec
+		double precision,dimension(3,3) :: vald
+		integer,dimension(4,3) :: order
+		integer :: pos1,pos2,i,j,k
+
+		order(1,:) = (/2,3,4/)
+		order(2,:) = (/3,4,1/)
+		order(3,:) = (/4,1,2/)
+		order(4,:) = (/1,2,3/)
+
+		vald = ec(order(pos1,:),:)
+		if(pos2/=1) then
+			vald(:,pos2-1) = 1.0d0
+		end if
+	end function detcreate
+
+	function det3(A) result(d)
+		double precision,dimension(3,3) :: A
+		double precision :: d
+		
+		d =   A(1,1)*A(2,2)*A(3,3)  &
+            - A(1,1)*A(2,3)*A(3,2)  &
+            - A(1,2)*A(2,1)*A(3,3)  &
+            + A(1,2)*A(2,3)*A(3,1)  &
+            + A(1,3)*A(2,1)*A(3,2)  &
+            - A(1,3)*A(2,2)*A(3,1)
+	end function det3
+
+	function det4(A) result(d)
+		double precision,dimension(4,4) :: A
+		double precision :: d
+
+		d =  A(1,1)*(A(2,2)*(A(3,3)*A(4,4)-A(3,4)*A(4,3))+A(2,3)*(A(3,4)*A(4,2)-A(3,2)*A(4,4))+A(2,4)*(A(3,2)*A(4,3)- &
+		A(3,3)*A(4,2)))-A(1,2)*(A(2,1)*(A(3,3)*A(4,4)-A(3,4)*A(4,3))+A(2,3)*(A(3,4)*A(4,1)-A(3,1)*A(4,4))+ &
+		A(2,4)*(A(3,1)*A(4,3)-A(3,3)*A(4,1)))+A(1,3)*(A(2,1)*(A(3,2)*A(4,4)-A(3,4)*A(4,2))+A(2,2)*(A(3,4)*A(4,1)- &
+		A(3,1)*A(4,4))+A(2,4)*(A(3,1)*A(4,2)-A(3,2)*A(4,1)))-A(1,4)*(A(2,1)*(A(3,2)*A(4,3)-A(3,3)*A(4,2))+ &
+		A(2,2)*(A(3,3)*A(4,1)-A(3,1)*A(4,3))+A(2,3)*(A(3,1)*A(4,2)-A(3,2)*A(4,1)))
+
+	end function det4
+
+end module elementcalculations
