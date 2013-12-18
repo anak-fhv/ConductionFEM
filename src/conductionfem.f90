@@ -92,10 +92,10 @@ module conductionfem
 ! Added code for the use of MKL PARDISO
 		call solvesystem(acsr,newF,ia,ja,solns)
 
-! Solve the final equations using the BLAS/LAPACK/MKL libraries
-! Temporarily blocked
+! Solve the final equations using the BLAS/LAPACK/MKL libraries:
+! Use only if problems occur in the deployment of PARDISO
+! Remember to block the previous solvesystem call
 !		call solvefinalequations(newK,newF)
-! End temporarily blocked
 
 ! Bookkeeping (writing values of important results)
 		open(resfilnum,file=resfil)
@@ -315,7 +315,7 @@ module conductionfem
 		call dgetrs(trans,n,nrhs,K,lda,ipiv,F,ldb,info)
 	end subroutine solvefinalequations
 
-!10. Convert the global stiffness into a sparse column representation
+!10. Convert the global stiffness into a Compressed Sparse Row representation
 	subroutine makestiffnesscsr(K,F,acsr,ia,ja)
 		integer,dimension(8) :: job
 		integer :: i,j,ct,m,n,lda,info
@@ -354,6 +354,7 @@ module conductionfem
 		print *, "info: ", info
 	end subroutine makestiffnesscsr
 
+!11. Routine invoking the PARDISO with the Compressed Sparse Row stiffness matrix
 	subroutine solvesystem(Kcsr,F,ia,ja,x)
 		use mkl_pardiso
 		integer,parameter :: dp = kind(1.0d0)		! internal solver memory pointer 
