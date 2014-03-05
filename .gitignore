@@ -1,2 +1,4 @@
 /obj/*
-**.msh
+*.msh
+*.out
+*.dat
