@@ -296,11 +296,6 @@ module pre_process_data
             end do
         end do
                
-                
-        ! dealloaction of some array   
-        deallocate(vertices, stat=alloc_status)
-        call check_alloc_error(alloc_status, "vertices, dealloaction")
-        
         ! close file
         close(unit=21)
         
