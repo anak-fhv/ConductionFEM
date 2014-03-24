@@ -7,10 +7,9 @@
 module rt_constants
 
     implicit none
-    integer, parameter :: dp=selected_real_kind(p=14)
-    
+    integer, parameter   :: dp=selected_real_kind(p=14)
+    real(dp), parameter  :: pi=3.14159265358979
 end module rt_constants
-
 
 module rt_types
 
@@ -32,43 +31,16 @@ module rt_types
         integer                  :: domain=0      ! to which domain the tetra belongs
     
     end type tetraElement
-     
-end module rt_types    
-
-
-module rt_funcs
-
-    use rt_types
-    use rt_constants
-    implicit none
     
-    contains
+    type :: emissionSurface
+        character(len=100)                   :: name ! name of emission surface
+        real(dp), dimension(:), allocatable  :: area ! cumsum of area of the faces on the surface of emission
+        integer, dimension(:,:), allocatable :: elemData ! (:,1) number of tetra-element      
+                                                         ! (:,2) face of tetra-element which is on the surface
+    end type
     
-    ! The function return_facenumber returns the ID of the face of a tetra
-    ! given that a mask exist which indicates which vertices defining the face.        
-    integer function return_facenumber(mask)
-            
-        implicit none
-        logical, dimension(4) :: mask
-        
-        if (all(mask == [.true., .true., .true., .false.])) then
-            return_facenumber = 1
-        else if (all(mask == [.true., .true., .false., .true.])) then
-            return_facenumber = 2
-        else if (all(mask == [.false., .true., .true., .true.])) then
-            return_facenumber = 3
-        else if(all(mask == [.true., .false., .true., .true.])) then
-            return_facenumber = 4
-        else
-            write(*,*) "unknown mask. Can not determine correct face number!"
-            stop
-        end if
-            
-    end function return_facenumber
-       
-end module rt_funcs
-            
-                
+end module rt_types       
+
 module math_funs
     
     use rt_constants
@@ -131,7 +103,76 @@ module math_funs
    
    end function norm
   
-end module math_funs
+    ! wrapper for random numbers
+    function myRandom(iflag)
+        use ifport           ! used for standard random numbers           
+        implicit none
+        
+        real(dp) :: myRandom
+        integer  :: iflag
+        
+        if (iflag > 0) call srand(iflag)
+        myRandom = drand(0)
+        
+    end function myRandom
+    
+end module math_funs                              
+
+
+module rt_funcs
+
+    use rt_types
+    use rt_constants
+    implicit none
+    
+    contains
+    
+    ! The function return_facenumber returns the ID of the face of a tetra
+    ! given that a mask exist which indicates which vertices defining the face.        
+    integer function return_facenumber(mask)
+            
+        implicit none
+        logical, dimension(4) :: mask
+        
+        if (all(mask == [.true., .true., .true., .false.])) then
+            return_facenumber = 1
+        else if (all(mask == [.true., .true., .false., .true.])) then
+            return_facenumber = 2
+        else if (all(mask == [.false., .true., .true., .true.])) then
+            return_facenumber = 3
+        else if(all(mask == [.true., .false., .true., .true.])) then
+            return_facenumber = 4
+        else
+            write(*,*) "unknown mask. Can not determine correct face number!"
+            stop
+        end if
+            
+    end function return_facenumber
+    
+    subroutine return_facevertIds(face, vertIds)
+    
+        implicit none
+        integer, intent(in)                :: face
+        integer, dimension(3), intent(out) :: vertIds
+        
+        select case(face)
+            case(1)
+                vertIds = [1,2,3]
+            case(2)
+                vertIds = [1,2,4]
+            case(3)
+                vertIds = [2,3,4]
+            case(4)
+                vertIds = [1,3,4]
+            case default
+                write(*,*) "Unknown face number!"
+                stop
+       end select
+       
+    end subroutine return_facevertIds    
+    
+   
+end module rt_funcs
 
 
 module pre_process_data
@@ -143,25 +184,24 @@ module pre_process_data
     
     contains
     
-    subroutine read_mesh_data(file_name, npart, tetraData, vertices)
+    subroutine read_mesh_data(file_name, emSurfNames, npart, tetraData, vertices, ems)
     
         implicit none
-        character(len=*), intent(in)                               :: file_name 
-        integer, intent(in)                                        :: npart
-        logical                                                    :: l
-        integer                                                    :: io_error, read_error, n, alloc_status, i, j
-        character(len=100)                                         :: line  
-        integer                                                    :: nVertices, nTetra, nHexa, nPyr, nWedges, nDomain, nSurface
-        real(dp), dimension(:,:), allocatable, intent(out)         :: vertices 
-        integer, dimension(:,:), allocatable                       :: surfData
-        integer, dimension(:), allocatable                         :: elemDomain
-        real                                                       :: t1, t2
-        integer                                                    :: nElem, remainElem
-        character(len=20)                                          :: dName, surfName
-        character(len=1)                                           :: test
-        type(tetraElement), dimension(:), allocatable, intent(out) :: tetraData
-        integer, dimension(:,:), allocatable                       :: vertIDs
-        logical,dimension(:,:), allocatable                        :: flag
+        character(len=*), intent(in)                                  :: file_name 
+        character(len=*), intent(in)                                  :: emSurfNames(:)
+        integer, intent(in)                                           :: npart
+        type(tetraElement), dimension(:), allocatable, intent(out)    :: tetraData
+        real(dp), dimension(:,:), allocatable, intent(out)            :: vertices 
+        type(emissionSurface), dimension(:), allocatable, intent(out) :: ems
+        logical                                                       :: l
+        integer                                                       :: io_error, read_error, alloc_status, i, j, k, n
+        integer                                                       :: nVertices, nTetra, nHexa, nPyr, nWedges, nDomain, nSurface
+        integer, dimension(:,:), allocatable                          :: surfData
+        integer, dimension(:), allocatable                            :: elemDomain
+        real                                                          :: t1, t2
+        integer                                                       :: nElem, remainElem
+        character(len=100)                                            :: dName, surfName, line
+        
     
         call cpu_time(t1) ! just out of interest measure time of routine
         
@@ -188,10 +228,10 @@ module pre_process_data
         
     
         ! allocate and read vertices 
-        allocate(vertices(3,nVertices), stat=alloc_status)
+        allocate(vertices(nVertices,3), stat=alloc_status)
         call check_alloc_error(alloc_status, "vertex array")
         do n = 1,nVertices
-            read(21,'(3(1x,3e14.6))', iostat=read_error) vertices(:,n) 
+            read(21,'(3(1x,3e14.6))', iostat=read_error) vertices(n,:) 
             call check_io_error(read_error,"reading vertex data")
         end do
         ! just some status messages
@@ -201,8 +241,6 @@ module pre_process_data
         ! allocate tetraData        
         allocate(tetraData(nTetra), stat=alloc_status)
         call check_alloc_error(alloc_status, "tetraData array")
-!         allocate(vertIds(4,nTetra), stat=alloc_status)
-!         call check_alloc_error(alloc_status, "vertIDs array")
         
         ! read tetra elements and assign vertices
         do n = 1,nTetra
@@ -217,8 +255,6 @@ module pre_process_data
     
             ! read number of elements with domain and name of domain
             read(21,'(i8,1x,a8)', iostat=read_error) nElem, dName
-            
-            write(*,*) nElem, dName
             
             allocate(elemDomain(nElem), stat=alloc_status)
             call check_alloc_error(alloc_status, "elemDomain array")
@@ -247,14 +283,17 @@ module pre_process_data
         
         
         ! read surface information
+        allocate(ems(size(emSurfNames)), stat=alloc_status)
+        call check_alloc_error(alloc_status, "ems array")
+        k = 0
+
         do i = 1,nSurface
     
             read(21,'(i8,1x,a)', iostat=read_error) nElem, surfName
-!             write(*,*) nElem, surfName
         
             allocate(surfData(nElem,2), stat=alloc_status)
             call check_alloc_error(alloc_status, "surfData")
-      
+              
             do n = 1, nElem/5
                 read(21,'(5(2x,i8,1x,i1))',iostat=read_error) (surfData(j,1), surfData(j,2),j=5*n-4,5*n)
                 call check_io_error(read_error,"reading surface data")
@@ -270,6 +309,20 @@ module pre_process_data
                 tetraData(surfData(n,1))%neighbors(surfData(n,2),2) = -1
             end do
             
+            ! if the surface is a emission surface
+            if (any(surfName == emSurfNames)) then
+                k = k + 1
+                allocate(ems(k)%area(nElem), stat=alloc_status)
+                call check_alloc_error(alloc_status, "ems(k)%area array")
+                allocate(ems(k)%elemData(nElem,2), stat=alloc_status)
+                call check_alloc_error(alloc_status, "ems(k)%elemData array")
+                
+                ems(k)%name = surfName
+                call CreateEmissionSurf(tetraData, vertices, surfData, ems(k))
+                
+            end if
+            
+            ! deallocate surfData
             deallocate(surfData, stat=alloc_status)
             call check_alloc_error(alloc_status, "surfData, dealloaction") 
                 
@@ -305,6 +358,7 @@ module pre_process_data
     
     end subroutine read_mesh_data
 
+    
     subroutine check_io_error(stat, message)
     
         implicit none
@@ -323,7 +377,8 @@ module pre_process_data
         
         return
     end subroutine check_io_error
-    
+
+        
     subroutine check_alloc_error(stat, message)
     
         implicit none
@@ -473,7 +528,7 @@ module pre_process_data
                 if (list2(j) == 0) cycle    
                 
                 ! look which vertices of element i are in the following j elements  
-                mask = 0
+                mask = .false.
                 forall(k=1:4) mask(k) = any(tetraData(list1(i))%vertexIds(k) == tetraData(list2(j))%vertexIds(:))
                              
                 ! 3 vertices are equal
@@ -513,7 +568,8 @@ module pre_process_data
         write(*,*)
         
     end subroutine find_neighbors
-    
+
+        
     subroutine find_neighbors_single_list(list, tetraData)
     
         implicit none
@@ -546,7 +602,7 @@ module pre_process_data
                 if (list(j) == 0) cycle
                 
                 ! look which vertices of element i are in the following j elements  
-                mask = 0
+                mask = .false.
                 forall(k=1:4) mask(k) = any(tetraData(list(i))%vertexIds(k) == tetraData(list(j))%vertexIds(:))
                              
                 ! 3 vertices are equal
@@ -585,5 +641,40 @@ module pre_process_data
         write(*,*)
         
     end subroutine find_neighbors_single_list
+
+        
+    subroutine CreateEmissionSurf(tetras, vertices, surfData, ems)
+
+        implicit none
+        type(tetraElement), intent(in)            :: tetras(:)
+        real(dp), intent(in)                      :: vertices(:,:)   
+        integer, intent(in)                       :: surfData(:,:)
+        type(emissionSurface), intent(inout)      :: ems        
+        integer                                   :: n,i
+        integer, dimension(3)                     :: vertIds
+        real(dp), dimension(3)                    :: p1, p2, p3 
+        
+        do i =1,size(surfData,1)
+            
+                ! face and the respective vertices which lie on the surface of emission
+                call return_facevertIds(surfData(i,2),vertIds)           
+                p1 = vertices(tetras(surfData(i,1))%vertexIds(vertIds(1)),:)
+                p2 = vertices(tetras(surfData(i,1))%vertexIds(vertIds(2)),:)
+                p3 = vertices(tetras(surfData(i,1))%vertexIds(vertIds(3)),:)
+            
+                ! get area normal vectors
+                ems%ElemData(i,1) = surfData(i,1)
+                ems%ElemData(i,2) = surfData(i,2)
+                if (i == 1) then
+                    ems%area(1) = 0.5_dp*norm(cross(p2-p1,p3-p1))
+                else 
+                    ems%area(i) = 0.5_dp*norm(cross(p2-p1,p3-p1)) + ems%area(i-1)
+                end if 
+        end do
+        
+        ems%area = ems%area/ems%area(size(surfData,1))
+        
+    end subroutine CreateEmissionSurf
     
+
 end module pre_process_data
