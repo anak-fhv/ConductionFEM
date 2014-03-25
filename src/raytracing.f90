@@ -45,7 +45,7 @@ program raytracing
     call read_mesh_data(file_name, emSurfNames, npart, tetras, vertexData, emSurf)
     
     call cpu_time(t1)
-    do i = 1,1e7
+    do i = 1,2
         call CreateRay(tetras, vertexData, emSurf(1), rayOrigin, rayDir)
     end do
     call cpu_time(t2)
@@ -197,7 +197,7 @@ program raytracing
         
         ! second rotation with normal vector as rotation axis
         psi = 2*pi*myRandom(0)
-        A = transpose(reshape([ndir, dir1, cross(ndir,dir1)],[3,3]))
+        A = reshape([ndir, dir1, cross(ndir,dir1)],[3,3])
         M = matmul(A,reshape([1.0_dp, 0.0_dp, 0.0_dp, 0.0_dp, cos(psi), sin(psi), 0.0_dp, -sin(psi), cos(psi)],[3,3]))
         M = matmul(M,transpose(A))
         rayDir = matmul(M,rayDir)
