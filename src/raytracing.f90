@@ -44,10 +44,13 @@ program raytracing
     ! perform pre-processing
     call read_mesh_data(file_name, emSurfNames, npart, tetras, vertexData, emSurf)
     
-    do i = 1,5
+    call cpu_time(t1)
+    do i = 1,1e7
         call CreateRay(tetras, vertexData, emSurf(1), rayOrigin, rayDir)
     end do
-   
+    call cpu_time(t2)
+    
+    write(*,*) "time: ", t2-t1
 
 !        
 !     ! test whether new point is on face of new tetra-element
@@ -86,7 +89,8 @@ program raytracing
         integer                             :: face, tetra, i
         integer, dimension(3)               :: vertIDs 
         real(dp)                            :: psi, theta, b, c, d
-        real(dp), dimension(3)              :: p1, p2, p3, dir1, dir2, dir21, ds1
+        real(dp), dimension(3)              :: p1, p2, p3, dir1, dir2, dir21, ds1, ndir
+        real(dp), dimension(3,3)            :: A, M  
     
         ! get random tetraeder on the emission surface
         psi = myRandom(0)
@@ -169,13 +173,46 @@ program raytracing
         !write(*,*) PointInside(p1,p2,p3,rayOrigin)
     
         ! choose ray direction
+        ndir = cross(dir1,dir2) ! normal vector of triangle
+        ndir = ndir/norm(ndir)
+        ! check whether normal vector points inwards or outwards
+        do i = 1,4
+            if (any(i == vertIDs) .eqv. .false.) exit
+        end do        
+        if (dot_product(ndir, vertices(tetraData(tetra)%vertexIds(i),:) - rayOrigin) < 0) ndir = -ndir
+
+        ! first rotate about about a vector in the plane
+        dir1 = dir1/b
+        A = reshape([dir1, ndir, cross(dir1,ndir)],[3,3])
         theta = asin(sqrt(myRandom(0)))
-        psi = 2*pi*myRandom(0)
-        rayDir = [cos(theta), sin(theta)*sin(psi), -cos(psi)*sin(theta)]
+        M = matmul(A,reshape([1.0_dp, 0.0_dp, 0.0_dp, 0.0_dp, cos(theta), sin(theta), 0.0_dp, -sin(theta), cos(theta)],[3,3]))
+        M = matmul(M,transpose(A))
+        rayDir = matmul(M,ndir)
+!         write(*,*)
+!         write(*,*) rayDir
+!         write(*,*)
+!         write(*,*) A(1,:)
+!         write(*,*) A(2,:)
+!         write(*,*) A(3,:)
         
-        write(*,*) "origin: ", rayOrigin
-        write(*,*) "direction: ", rayDir
-    
+        ! second rotation with normal vector as rotation axis
+        psi = 2*pi*myRandom(0)
+        A = transpose(reshape([ndir, dir1, cross(ndir,dir1)],[3,3]))
+        M = matmul(A,reshape([1.0_dp, 0.0_dp, 0.0_dp, 0.0_dp, cos(psi), sin(psi), 0.0_dp, -sin(psi), cos(psi)],[3,3]))
+        M = matmul(M,transpose(A))
+        rayDir = matmul(M,rayDir)
+        
+!         write(*,*)
+!         write(*,'(a12,3(1x,3e14.6))') "origin: ", rayOrigin
+!         write(*,'(a12,3(1x,3e14.6))') "direction: ", rayDir
+!         write(*,*)
+!         
+!         write(*,'(a12,3(1x,3e14.6))') "dir1: ", dir1
+!         write(*,'(a12,3(1x,3e14.6))') "dir2: ", dir2
+!         write(*,'(a12,3(1x,3e14.6))') "ndir: ", ndir
+!         write(*,'(a12,3(1x,3e14.6))') "theta: ", theta
+!         write(*,'(a12,3(1x,3e14.6))') "psi: ", psi
+        
     end subroutine CreateRay
     
     function PointInside(p1,p2,p3,tp)
