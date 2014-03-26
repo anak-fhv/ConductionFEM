@@ -1,0 +1,12 @@
+Module numbering is used to define the starting digit of the file
+unit number. This ensures no overwrites/accidental modifications
+take place. The numbering can also be used for other use cases.
+The numbering here is the order followed by files in the makefile.
+
+10X		htfem
+20X		postproc
+30X		assembly
+40X		boundary
+50X		element
+60X		readmesh
+70X		solver

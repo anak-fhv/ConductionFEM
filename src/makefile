@@ -16,7 +16,10 @@ LIBS := 	$(LIBPATH)/libmkl_intel_lp64.a \
   			-lpthread
 
 # All compiled output
-OBJECTS	:= $(OBJDIR)/test.o $(OBJDIR)/htfem.o $(OBJDIR)/readmesh.o $(OBJDIR)/element.o $(OBJDIR)/assembly.o $(OBJDIR)/boundary.o $(OBJDIR)/solver.o
+OBJECTS	:= $(OBJDIR)/test.o $(OBJDIR)/htfem.o \
+		   $(OBJDIR)/readmesh.o $(OBJDIR)/element.o \
+		   $(OBJDIR)/assembly.o $(OBJDIR)/boundary.o \
+		   $(OBJDIR)/solver.o $(OBJDIR)/postproc.o
 
 # Make all target
 all: $(OBJECTS)
@@ -25,23 +28,32 @@ all: $(OBJECTS)
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-$(OBJDIR)/test.o: $(OBJDIR)/htfem.o $(OBJDIR)/readmesh.o $(OBJDIR)/element.o $(OBJDIR)/assembly.o $(OBJDIR)/boundary.o $(OBJDIR)/solver.o | $(OBJDIR)
+$(OBJDIR)/test.o: $(OBJDIR)/htfem.o $(OBJDIR)/readmesh.o \
+				  $(OBJDIR)/element.o $(OBJDIR)/assembly.o \
+				  $(OBJDIR)/boundary.o $(OBJDIR)/solver.o \
+				  $(OBJDIR)/postproc.o | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -c test.f90 -o $(OBJDIR)/test.o
 
-$(OBJDIR)/htfem.o: $(OBJDIR)/readmesh.o $(OBJDIR)/element.o $(OBJDIR)/assembly.o $(OBJDIR)/boundary.o $(OBJDIR)/solver.o | $(OBJDIR)
+$(OBJDIR)/htfem.o: $(OBJDIR)/readmesh.o $(OBJDIR)/element.o \
+				   $(OBJDIR)/assembly.o $(OBJDIR)/boundary.o \
+				   $(OBJDIR)/solver.o $(OBJDIR)/postproc.o | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c htfem.f90 -o $(OBJDIR)/htfem.o
 
-$(OBJDIR)/readmesh.o: $(OBJDIR)/element.o | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c readmesh.f90 -o $(OBJDIR)/readmesh.o
 
-$(OBJDIR)/element.o: | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c element.f90 -o $(OBJDIR)/element.o
+$(OBJDIR)/postproc.o: $(OBJDIR)/element.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c postproc.f90 -o $(OBJDIR)/postproc.o
 
 $(OBJDIR)/assembly.o: | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c assembly.f90 -o $(OBJDIR)/assembly.o
 
 $(OBJDIR)/boundary.o: | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c boundary.f90 -o $(OBJDIR)/boundary.o
+
+$(OBJDIR)/element.o: | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c element.f90 -o $(OBJDIR)/element.o
+
+$(OBJDIR)/readmesh.o: | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c readmesh.f90 -o $(OBJDIR)/readmesh.o
 
 $(OBJDIR)/solver.o: | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c solver.f90 -o $(OBJDIR)/solver.o

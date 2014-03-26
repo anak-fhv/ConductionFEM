@@ -5,23 +5,25 @@ module htfem
 	use boundary
 	use assembly
 	use solver
+	use postproc
 
 	implicit none
 
 	contains
 
 	subroutine fem()
-		integer,parameter :: resfilenum = 111, outfilenum = 222			! Files to store results and other output
+		integer,parameter :: resfilenum = 101, outfilenum = 102			! Files to store results and other output
 		integer :: nNodes,nElems,nDoms,nSurfs,elDom,fcBytype,i,j,k,	&	! Prefixes: n=>number, el=>element, fc=>face
 				   meshVals(7),elNodes(4),elByfaces(4),iter				! by=>boundary, sf=>surface, gn=>generation, no=>node
 		integer,allocatable :: doElems(:),byCs(:),syRowPtr(:),		&	! do=>domain, sy=>global system
 							   syCols(:),connTab(:,:),sfElems(:,:)
 		real(8),parameter :: kDefault = 1.d0
-		real(8) :: elVol,tAmbient,gnVal,elK,tc,byTemp(4),bySrc(4),	&
-				   gnSrc(4),elVerts(4,3),elSpfns(4,4),elSt(4,4),	&
-				   bySt(4,4)
+		real(8) :: elVol,tAmbient,gnVal,elK,tc,qBHigh,qBLow,		&
+				   byTemp(4),bySrc(4),gnSrc(4),elVerts(4,3),		&
+				   elSpfns(4,4),elSt(4,4),bySt(4,4)
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
-							   syTvals(:),noVerts(:,:),reVals(:)
+							   syTvals(:),noVerts(:,:),reVals(:),	&
+							   vF(:)
 		character(*),parameter :: objdir = "../obj/",				&
 								  resfile = objdir//"results.out",	&
 								  outfile = objdir//"outputs.out"
@@ -46,6 +48,11 @@ module htfem
 		allocate(syTvals(nNodes))
 		allocate(noSys(nNodes))
 
+		if(nDoms .gt. 1) then
+			allocate(vF(nDoms))
+			vF = 0.d0
+		end if
+
 		sySrc = 0.d0
 		syTvals = 0.d0
 
@@ -63,6 +70,10 @@ module htfem
 !	Call stiffness functions
 			call shapefunctions(elVerts,elVol,elSpfns)
 			call elementstiffness(elSpfns,elVol,elK,elSt)
+
+			if(nDoms .gt. 1) then
+				vF(elDom) = vF(elDom) + elVol
+			end if
 
 !	Check boundary conditions
 			elByfaces = sfElems(i,:)
@@ -89,14 +100,10 @@ module htfem
 
 		end do
 
-		deallocate(connTab)
-		deallocate(doElems)
-
 		call setupfinalequations(noSys,sySrc,syTvals)
 
 		call collapse_noderows(noSys,sySt,syCols,syRowPtr)
 
-		deallocate(syTvals)
 		deallocate(noSys)
 
 		write(*,*) "Entered solution step"
@@ -112,15 +119,27 @@ module htfem
 			revals(i)
 		end do
 
-		close(resfilenum)
+		write(resfilenum,*)
 
-		deallocate(noVerts)
+		call getflowrates(noVerts,connTab,doElems,domKs,sfElems,	&
+		reVals,(/1,2/),(/3,4/),3,qBLow,qBHigh)
+
+		if(nDoms .eq. 2) then
+			write(resfilenum,'(a,f9.4)') "Sample porosity:",		&
+			vF(1)/(sum(vF))
+		end if
+
+		write(resfilenum,*) "Fluxes:"
+		write(resfilenum,'(a,f9.4)') "Boundary low:", qBLow
+		write(resfilenum,'(a,f9.4)') "Boundary high:", qBHigh
+
+		close(resfilenum)
 
 	end subroutine fem
 
     subroutine getmeshdata(meshdetails,vertices,connectivity,		&
 	domainelements,surfacenames,surfacefaces)
-        integer,parameter :: unitnumber = 111
+        integer,parameter :: unitnumber = 103
 		integer,dimension(7) :: meshdetails
         integer,dimension(:,:),allocatable :: connectivity, surfacefaces
         integer,dimension(:),allocatable :: domainelements

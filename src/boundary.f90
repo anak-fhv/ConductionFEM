@@ -10,7 +10,7 @@ module boundary
 !-------------------------------------------------------------------
     subroutine readboundaryconditions(meshdetails, boundaryconditions, &
     kvals, boundaryvalues, Tambient, generation, generationrate)
-        integer,parameter :: datafilenum=222
+        integer,parameter :: datafilenum=401
         character(len=*),parameter :: filename='datafile.dat'
         integer,dimension(7) :: meshdetails
         integer :: numdomains,numboundaries,i,j
