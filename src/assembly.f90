@@ -44,8 +44,6 @@ module assembly
 ! END subroutine to assemble element values
 !-------------------------------------------------------------------
 
-
-
 	subroutine collapse_noderows(node,val,col,row_ptr)
 		type(noderow),dimension(:) :: node
 		integer,dimension(:),allocatable :: tempcol,ind,row_ptr,col
@@ -62,19 +60,6 @@ module assembly
 			call indexedsort(node(i)%col,ind)
 			node(i)%val = node(i)%val(ind)
 			deallocate(ind)
-!-------------------------------------------------------------------
-! This call added to make the matrix store only the upper triangle
-!-------------------------------------------------------------------
-!			if(i .eq. 5) then
-!				write(*,'(4i8)') node(i)%col
-!			end if
-!			call deletelower(i,node(i)%col,node(i)%val)
-!			if(i .eq. 5) then
-!				write(*,'(4i8)') node(i)%col
-!			end if
-!-------------------------------------------------------------------
-! End call block
-!-------------------------------------------------------------------
 			call add_duplicates(node(i)%col,node(i)%val,numunique)
 			numval = numval+numunique
 			row_ptr(i+1) = row_ptr(i)+numunique
@@ -85,10 +70,8 @@ module assembly
 		do i=1,numno
 			val(row_ptr(i):(row_ptr(i+1)-1)) = node(i)%val
 			col(row_ptr(i):(row_ptr(i+1)-1)) = node(i)%col
-! Commented for debugging
 			deallocate(node(i)%col)
 			deallocate(node(i)%val)
-! Commented for debugging
 		end do
 
 	end subroutine collapse_noderows
