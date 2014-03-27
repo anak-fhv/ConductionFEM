@@ -11,6 +11,7 @@ module rt_constants
     real(dp), parameter  :: pi=3.14159265358979
 end module rt_constants
 
+
 module rt_types
 
     use rt_constants
@@ -39,7 +40,14 @@ module rt_types
                                                          ! (:,2) face of tetra-element which is on the surface
     end type
     
+    type :: rayContainer  ! contains information on the traced ray
+        real(dp), dimension(3) :: point, direction ! current point and its direction
+        integer                :: tetraID          ! current tetraeder indes
+        integer                :: faceID           ! current face index
+    end type
+    
 end module rt_types       
+
 
 module math_funs
     
@@ -49,9 +57,9 @@ module math_funs
     contains
     
     ! put all zeros at the end of a list
-    ! should contain only positive or zero entries
+    ! list should contain only positive or zero entries
     subroutine putZerosAway(list)
-        implicit none
+
         integer, intent(inout) :: list(:)
         integer                :: nmax, nzeros, value
         integer, dimension(1)  :: id
@@ -68,10 +76,10 @@ module math_funs
         end if
 
         do
-            id = minloc(list)  ! first index of smallest element 
-            if (nmax-nzeros == id(1)-1) exit  ! all zero's are at the end
+            id = minloc(list)                 ! first index of smallest element 
+            if (nmax-nzeros == id(1)-1) exit  ! all zero's are at the end exit loop
             
-            ! move zero at the end, and shift remaining list 1 element to the front
+            ! move zero at the end, and shift remaining list about 1 element to the front
             value = list(id(1))
             list(id(1):nmax-1) = list(id(1)+1:nmax) 
             list(nmax) = value
@@ -80,9 +88,27 @@ module math_funs
         
     end subroutine putZerosAway
 
+    ! determine a rotation matrix given an axis of rotation (rotAxis),
+    ! an angle of rotation (rotAngle), and a vector perpendicular (vecPerp) to it
+    subroutine RotationMatrix(rotAxis, vecPerp, rotAngle, rotMatrix)
+    
+         real(dp), dimension(3), intent(in)    :: rotAxis, vecPerp
+         real(dp)                              :: rotAngle
+         real(dp), dimension(3,3), intent(out) :: rotMatrix
+         real(dp), dimension(3,3)              :: A,M
+         
+         ! cartesian basis
+         A = reshape([rotAxis, vecPerp, cross(rotAxis, vecPerp)],[3,3])
+         ! general rotation matrix
+         M = reshape([1.0_dp, 0.0_dp, 0.0_dp, 0.0_dp, cos(rotAngle), sin(rotAngle), 0.0_dp, -sin(rotAngle), cos(rotAngle)],[3,3])
+         !rotation matrix for cartesian basis
+         rotMatrix = matmul(matmul(A,M),transpose(A))
+         
+    end subroutine RotationMatrix
+    
     ! cross product in 3d
     function cross(v1,v2)
-        implicit none
+
         real(dp), dimension(3) :: cross
         real(dp), dimension(3), intent(in)  :: v1,v2
  
@@ -94,7 +120,6 @@ module math_funs
   
     ! norm 
     function norm(v)
-        implicit none 
 
         real(dp)             :: norm
         real(dp), intent(in) :: v(:)
@@ -105,13 +130,12 @@ module math_funs
   
     ! wrapper for random numbers
     function myRandom(iflag)
-        use ifport           ! used for standard random numbers           
-        implicit none
+        use ifport           ! use intel random numbers           
         
         real(dp) :: myRandom
         integer  :: iflag
         
-        if (iflag > 0) call srand(iflag)
+        if (iflag > 0) call srand(iflag) ! seeds random number
         myRandom = drand(0)
         
     end function myRandom
@@ -128,10 +152,9 @@ module rt_funcs
     contains
     
     ! The function return_facenumber returns the ID of the face of a tetra
-    ! given that a mask exist which indicates which vertices defining the face.        
+    ! given that a mask exist which indicates which vertices define the face.        
     integer function return_facenumber(mask)
             
-        implicit none
         logical, dimension(4) :: mask
         
         if (all(mask == [.true., .true., .true., .false.])) then
@@ -149,9 +172,9 @@ module rt_funcs
             
     end function return_facenumber
     
+    ! returns the indices of tetraeder points (between 1 and 4) for a given face 
     subroutine return_facevertIds(face, vertIds)
     
-        implicit none
         integer, intent(in)                :: face
         integer, dimension(3), intent(out) :: vertIds
         
@@ -184,9 +207,10 @@ module pre_process_data
     
     contains
     
+    ! main routine which perform reading of input data and calls routines for
+    ! creating emission surfaces and populates tetraElement-type
     subroutine read_mesh_data(file_name, emSurfNames, npart, tetraData, vertices, ems)
-    
-        implicit none
+
         character(len=*), intent(in)                                  :: file_name 
         character(len=*), intent(in)                                  :: emSurfNames(:)
         integer, intent(in)                                           :: npart
@@ -211,6 +235,10 @@ module pre_process_data
             write (*,*) file_name//" does not exist!"
             stop
         end if
+        write(*,*)
+        write(*,*) "Start Reading Input File"
+        write(*,*) "==========================="
+        write(*,*)
     
         ! open file
         open(unit=21, file=file_name, status='old', action='read', iostat=io_error)       
@@ -225,8 +253,7 @@ module pre_process_data
         ! read internally to corresponding integer values
         read(line,'(7(1x,i8))') nVertices, nTetra, nHexa, nPyr, nWedges, nDomain, nSurface
         if (any([nHexa,nPyr,nWedges] /= 0)) write(*,*) "found non-Tetra elements. These will not be considered yet!"
-        
-    
+         
         ! allocate and read vertices 
         allocate(vertices(nVertices,3), stat=alloc_status)
         call check_alloc_error(alloc_status, "vertex array")
@@ -235,8 +262,7 @@ module pre_process_data
             call check_io_error(read_error,"reading vertex data")
         end do
         ! just some status messages
-        write(*,'(a5,i7,a31,1x,i1,1x,i7)') "read ",nVertices," vertices into array of shape", shape(vertices) 
-        write(*,*)
+        write(*,*) "read ",nVertices," vertices" 
         
         ! allocate tetraData        
         allocate(tetraData(nTetra), stat=alloc_status)
@@ -247,7 +273,7 @@ module pre_process_data
             read(21,'(4(1x,i8))',iostat=read_error) tetraData(n)%vertexIds
             call check_io_error(read_error,"reading tetra elements")
         end do
-        write(*,'(a5,i7,a)') "read ",nTetra," tetraeder elements" 
+        write(*,*) "read ",nTetra," tetraeder elements" 
         write(*,*)
         
         ! read elements for each domain        
@@ -259,17 +285,18 @@ module pre_process_data
             allocate(elemDomain(nElem), stat=alloc_status)
             call check_alloc_error(alloc_status, "elemDomain array")
         
+            ! read data in local array  
             do n = 1,nElem/10
                read(21,'(10(1x,i8))',iostat=read_error) elemDomain(10*n-9:10*n)
                call check_io_error(read_error,"reading domain elements")
-            end do
-        
+            end do     
             remainElem = nElem - (nElem/10)*10
             if (remainElem > 0) then
                 read(21,"("//achar(ichar('0')+remainElem)//"(1x,i8))",iostat=read_error) elemDomain(10*(nElem/10)+1:nElem)
                 call check_io_error(read_error,"reading remainder domain elements")
             end if
             
+            ! assign data to tetraElement-type
             forall(n = 1:nElem) tetraData(elemDomain(n))%domain = i
             
             deallocate(elemDomain, stat=alloc_status)
@@ -289,23 +316,26 @@ module pre_process_data
 
         do i = 1,nSurface
     
+            ! read number of elements with domain and name of domain
             read(21,'(i8,1x,a)', iostat=read_error) nElem, surfName
         
             allocate(surfData(nElem,2), stat=alloc_status)
             call check_alloc_error(alloc_status, "surfData")
-              
+            
+            ! read data in local array  
             do n = 1, nElem/5
                 read(21,'(5(2x,i8,1x,i1))',iostat=read_error) (surfData(j,1), surfData(j,2),j=5*n-4,5*n)
                 call check_io_error(read_error,"reading surface data")
-            end do
-            
+            end do         
             remainElem = nElem - (nElem/5)*5
             if (remainElem > 0) then
                 read(21,"("//achar(ichar('0')+remainElem)//"(2x,i8,1x,i1))",iostat=read_error) (surfData(j,1), surfData(j,2),j=(nElem/5)*5+1,nElem)
             end if 
        
+            ! assign data to tetraElement-type
+            ! surface index starts at number of (tetra elements + 1)
             do n = 1, nElem
-                tetraData(surfData(n,1))%neighbors(surfData(n,2),1) = i+nTetra
+                tetraData(surfData(n,1))%neighbors(surfData(n,2),1) = i+nTetra 
                 tetraData(surfData(n,1))%neighbors(surfData(n,2),2) = -1
             end do
             
@@ -317,6 +347,7 @@ module pre_process_data
                 allocate(ems(k)%elemData(nElem,2), stat=alloc_status)
                 call check_alloc_error(alloc_status, "ems(k)%elemData array")
                 
+                ! create emission surface
                 ems(k)%name = surfName
                 call CreateEmissionSurf(tetraData, vertices, surfData, ems(k))
                 
@@ -328,13 +359,16 @@ module pre_process_data
                 
         end do
         
+        ! close file
+        close(unit=21)
+        
         ! assign neighbors
+        write(*,*) "Creating Element Connections"
+        write(*,*) "============================="
+        write(*,*) 
         call assign_neighbors(npart, tetraData)
         
-!         call cpu_time(t2)
-!         write(*,'(A,3es14.6)') "post-processing took (in Sec.): ", t2-t1
-        
-        ! check for double entries
+        ! check for double entries (could be commented)
         do i = 1,nTetra
             do n = 1,4
                 if ( (tetraData(i)%neighbors(n,1) > nTetra) .or. (tetraData(i)%neighbors(n,1) == 0))  cycle
@@ -348,20 +382,19 @@ module pre_process_data
                 end if
             end do
         end do
-               
-        ! close file
-        close(unit=21)
         
         ! report timing
         call cpu_time(t2)
-        write(*,'(A,3es14.6)') "post-processing took (in Sec.): ", t2-t1
+        write(*,*)
+        write(*,*) "Finished Pre-Processing"
+        write(*,*) "=============================" 
+        write(*,*) "pre-processing took (in Sec.): ", t2-t1
     
     end subroutine read_mesh_data
 
-    
+    ! checks for input-output errors
     subroutine check_io_error(stat, message)
     
-        implicit none
         integer, intent(in)                :: stat
         character(*), intent(in), optional :: message
         
@@ -378,10 +411,9 @@ module pre_process_data
         return
     end subroutine check_io_error
 
-        
+    ! checks for alloaction errors    
     subroutine check_alloc_error(stat, message)
     
-        implicit none
         integer, intent(in)                :: stat
         character(*), intent(in), optional :: message
         
@@ -398,21 +430,14 @@ module pre_process_data
         return
     end subroutine check_alloc_error
     
-    
+    ! main routine for assigning neighbors
     subroutine assign_neighbors(npart, tetraData)
-    
-        implicit none    
+       
         integer, intent(in)                            :: npart
         type(tetraElement), intent(inout)              :: tetraData(:)
         integer                                        :: alloc_status, n, k
         integer, dimension(:), allocatable             :: list, id_start, id_end
         integer, dimension(1)                          :: idFirstZero, maxElem
-        
-        ! just some checking
-!         if (all([allocated(vertIDs), allocated(tetraData)]) .eqv. .false.) then
-!             write(*,*) "At least one of the arrays vertIDs or tetraData is not allocated!"
-!             stop
-!         end if
         
         ! create initial list
         allocate(list(size(tetraData)),stat=alloc_status)
@@ -421,7 +446,6 @@ module pre_process_data
         do n = 1,maxElem(1)
             list(n) = n
         end do
-        
         
         ! create partitions
         allocate(id_start(npart),stat=alloc_status)
@@ -440,58 +464,36 @@ module pre_process_data
         ! loop over all partitions and perform searches
         do n = 1,npart
         
+            write(*,*) "parsing partition number", n 
             ! search within same partition
-            call find_neighbors_single_list(list(id_start(n):id_end(n)), tetraData)
-!             write(*,*) "reduction after search in single list", count(list(id_start(n):id_end(n)) == 0)/real(id_end(n) - id_start(n) + 1)
-!             write(*,*)
+            call find_neighbors_single_list(list(id_start(n):id_end(n)), tetraData)            
             
-            
-            ! filter list of partition n
-            if (count(list(id_start(n):id_end(n)) == 0) > 0) then
-                call putZerosAway(list(id_start(n):id_end(n)))
-                idFirstZero = minloc(list(id_start(n):id_end(n)))
-                if (idFirstZero(1) == 1) then
-                    id_end(n) = 0
-                    exit ! list is empty
-                else
-                    id_end(n) = id_start(n) + idFirstZero(1) - 2
-                end if
-            end if
+            ! filter list of partition n by putting zeros at the end of the list
+            call filter_list(list(id_start(n):id_end(n)),id_start(n), id_end(n))
+            if (id_end(n) == 0) exit
             
             ! search in all partitions with larger index number
             do k = npart, n+1, -1
             
                 call find_neighbors(list(id_start(n):id_end(n)), list(id_start(k):id_end(k)), tetraData)
-!                 write(*,*) "reduction in high level list", count(list(id_start(n):id_end(n)) == 0)/real(id_end(n) - id_start(n) + 1)
-!                 write(*,*) "reduction in low level list ", count(list(id_start(k):id_end(k)) == 0)/real(id_end(k) - id_start(k) + 1)
-!                 write(*,*)
                 
                 ! filter list of partition n
-                if (count(list(id_start(n):id_end(n)) == 0) > 0) then
-                    call putZerosAway(list(id_start(n):id_end(n)))
-                    idFirstZero = minloc(list(id_start(n):id_end(n)))
-                    if (idFirstZero(1) == 1) then
-                        id_end(n) = 0
-                        exit ! list is empty
-                    else
-                        id_end(n) = id_start(n) + idFirstZero(1) - 2
-                    end if
-                end if
+                call filter_list(list(id_start(n):id_end(n)),id_start(n), id_end(n))
+                if (id_end(n) == 0) exit
                 
-                ! filter list of partition k                
-                if ( (count(list(id_start(k):id_end(k)) == 0) > 0) ) then
-                    call putZerosAway(list(id_start(k):id_end(k)))
-                    idFirstZero = minloc(list(id_start(k):id_end(k)))
-                    id_end(k) = id_start(k) +  idFirstZero(1) - 2
-                end if                   
+                ! filter list of partition k  
+                call filter_list(list(id_start(k):id_end(k)),id_start(k), id_end(k))                
                 
             end do
             
         end do
         
-        write(*,'(a,i8)') "numbers of elements in index list ",count(list(:) == 0)
-        write(*,'(a,i8)') "number of tetra-elements          ", maxElem(1)
-        write(*,*)
+        ! checking that all elements are assigned, both numbers should be the same
+        if (count(list(:) == 0) /= maxElem(1)) then
+            write(*,'(a,i8)') "numbers of elements in index list ", count(list(:) == 0)
+            write(*,'(a,i8)') "number of tetra-elements          ", maxElem(1)
+            write(*,*)
+        end if
         
         ! deallocate lists
         deallocate(list,stat=alloc_status)
@@ -503,17 +505,18 @@ module pre_process_data
     
     end subroutine assign_neighbors
     
-
+    ! search for neighbors in 2 lists
+    ! search routine:
+    ! for each element in the 1st list a neighbor is looked for in the 2nd list 
     subroutine find_neighbors(list1, list2, tetraData)
-    
-        implicit none
+
         integer, intent(inout)            :: list1(:), list2(:)
         type(tetraElement), intent(inout) :: tetraData(:)
         integer                           :: i, j, k, counter, face_i, face_j
-        real                              :: t1, t2
         logical, dimension(4)             :: mask
+!         real                              :: t1, t2
    
-        call cpu_time(t1)
+!         call cpu_time(t1)
 
         ! loop over elements in list1 and identify neighbors
         do i = 1,size(list1)
@@ -524,29 +527,21 @@ module pre_process_data
             ! search all elements in list2
             do j= 1,size(list2)
             
-                ! if element has already 4 neighbors
+                ! if element j has already 4 neighbors cycle
                 if (list2(j) == 0) cycle    
                 
-                ! look which vertices of element i are in the following j elements  
+                ! look which vertices of element i are in element j   
                 mask = .false.
                 forall(k=1:4) mask(k) = any(tetraData(list1(i))%vertexIds(k) == tetraData(list2(j))%vertexIds(:))
                              
-                ! 3 vertices are equal
+                ! 3 vertices are equal means the elements have a common face
                 if (count(mask) == 3) then
                     
-                    counter = counter + 1
+                    counter = counter + 1 ! increase number of neighbors for element i               
+                    face_i = return_facenumber(mask)  ! determine face which is shared by both elements
+                    call add_neighbor(list1(i), list2(j), face_i, tetraData)                     
                     
-                    face_i = return_facenumber(mask)
-                    
-                    ! determine the correct faces for element j
-                    forall(k=1:4) mask(k) = any(tetraData(list2(j))%vertexIds(k) == tetraData(list1(i))%vertexIds(:))
-                    face_j = return_facenumber(mask)
-                    
-                    tetraData(list1(i))%neighbors(face_i,1) = list2(j)
-                    tetraData(list1(i))%neighbors(face_i,2) = face_j
-                    tetraData(list2(j))%neighbors(face_j,1) = list1(i)
-                    tetraData(list2(j))%neighbors(face_j,2) = face_i
-                    
+                    ! if element j has four neighbors, add zero into list
                     if (minval(tetraData(list2(j))%neighbors(:,1)) > 0) then
                         list2(j) = 0
                     end if
@@ -563,63 +558,53 @@ module pre_process_data
             
         end do
         
-        call cpu_time(t2)
-        write(*,'(a49,i8,1x,i8,a7,3es14.6)') "current search for neighbors with lists of size ", size(list1),size(list2)," took: ",t2-t1
-        write(*,*)
+!         call cpu_time(t2)
+!         write(*,'(a49,i8,1x,i8,a7,3es14.6)') "current search for neighbors with lists of size ", size(list1),size(list2)," took: ",t2-t1
+!         write(*,*)
         
     end subroutine find_neighbors
 
-        
+    ! search for neighbors in single lists
+    ! search routine:
+    ! for each element in the list a neighbor is looked for in all following elements    
     subroutine find_neighbors_single_list(list, tetraData)
-    
-        implicit none
+
         integer, intent(inout)            :: list(:)
         type(tetraElement), intent(inout) :: tetraData(:)
         integer                           :: i, j, k, counter, face_i, face_j, n
-        real                              :: t1, t2
         logical, dimension(4)             :: mask
+!         real                              :: t1, t2
    
-        call cpu_time(t1)
+!         call cpu_time(t1)
         n = size(list)        
 
-        
         ! loop over elements in list and identify neighbors
         do i = 1,n-1
-                 
-                                    
+                                                 
             ! if element has already 4 neighbors
             if (list(i) == 0) cycle
             
             ! count how many neighbors element i already has
-!             write(*,*) i, n-1
-!             write(*,*)
             counter = count(tetraData(list(i))%neighbors(:,1) > 0)
                                    
             ! search all elements below
             do j= i+1,n
             
-                ! if element has already 4 neighbors
+                ! if element j has already 4 neighbors
                 if (list(j) == 0) cycle
                 
-                ! look which vertices of element i are in the following j elements  
+                ! look which vertices of element i are in element j  
                 mask = .false.
                 forall(k=1:4) mask(k) = any(tetraData(list(i))%vertexIds(k) == tetraData(list(j))%vertexIds(:))
                              
-                ! 3 vertices are equal
+                ! 3 vertices are equal, elements are neighbors
                 if (count(mask) == 3) then
                     
-                    counter = counter + 1
+                    counter = counter + 1   ! increase number of neighbors in element i
+                    face_i = return_facenumber(mask) ! get face of element i which is shared by both elements
+                    call add_neighbor(list(i), list(j), face_i, tetraData)
                     
-                    face_i = return_facenumber(mask)
-                    
-                    forall(k=1:4) mask(k) = any(tetraData(list(j))%vertexIds(k) == tetraData(list(i))%vertexIds(:))
-                    face_j = return_facenumber(mask)
-                    
-                    tetraData(list(i))%neighbors(face_i,1) = list(j)
-                    tetraData(list(i))%neighbors(face_i,2) = face_j
-                    tetraData(list(j))%neighbors(face_j,1) = list(i)
-                    tetraData(list(j))%neighbors(face_j,2) = face_i
-                    
+                    ! if element j has four neighbors, add zero into list
                     if (minval(tetraData(list(j))%neighbors(:,1)) > 0) then
                         list(j) = 0
                     end if
@@ -636,16 +621,57 @@ module pre_process_data
             
         end do
         
-        call cpu_time(t2)
-        write(*,'(a47,i12,a7,3es14.6)') "current search for neighbors with list of size ", n," took: ",t2-t1
-        write(*,*)
+!         call cpu_time(t2)
+!         write(*,'(a49,i12,a7,3es14.6)') "current search for neighbors with list of size ", n," took: ",t2-t1
+!         write(*,*)
         
     end subroutine find_neighbors_single_list
 
+    ! filter list for zeros and update right index boundary
+    subroutine filter_list(list, id_start, id_end)
+    
+        integer, intent(inout) :: list(:)
+        integer, intent(in)    :: id_start
+        integer, intent(out)   :: id_end
+        integer, dimension(1)  :: idFirstZero
         
+        if (count(list == 0) > 0) then
+            call putZerosAway(list)
+            idFirstZero = minloc(list)
+            if (idFirstZero(1) == 1) then
+                id_end = 0
+            else
+                id_end = id_start + idFirstZero(1) - 2
+            end if
+        end if
+    
+    end subroutine filter_list
+    
+    ! add neighbor data into tetraElement-type
+    subroutine add_neighbor(tetra1, tetra2, face1, tetraData)
+    
+        integer, intent(in)               :: tetra1, tetra2, face1
+        type(tetraElement), intent(inout) :: tetraData(:)
+        logical, dimension(4)             :: mask
+        integer                           :: k, face2
+        
+        mask = .false.
+        forall(k=1:4) mask(k) = any(tetraData(tetra2)%vertexIds(k) == tetraData(tetra1)%vertexIds(:))
+        face2 = return_facenumber(mask)
+                    
+        ! assign data in tetraElement-type
+        tetraData(tetra1)%neighbors(face1,1) = tetra2
+        tetraData(tetra1)%neighbors(face1,2) = face2
+        tetraData(tetra2)%neighbors(face2,1) = tetra1
+        tetraData(tetra2)%neighbors(face2,2) = face1
+    
+    end subroutine add_neighbor
+      
+    ! create emission surface from surface data which includes
+    ! calculating the area of each face and storing it in a
+    ! cumulative manner   
     subroutine CreateEmissionSurf(tetras, vertices, surfData, ems)
 
-        implicit none
         type(tetraElement), intent(in)            :: tetras(:)
         real(dp), intent(in)                      :: vertices(:,:)   
         integer, intent(in)                       :: surfData(:,:)
@@ -656,22 +682,24 @@ module pre_process_data
         
         do i =1,size(surfData,1)
             
-                ! face and the respective vertices which lie on the surface of emission
+                ! index of tetraeder and the index for the face on the surface 
+                ems%ElemData(i,1) = surfData(i,1)
+                ems%ElemData(i,2) = surfData(i,2)
+                
+                ! determine vertices for calculating the face area
                 call return_facevertIds(surfData(i,2),vertIds)           
                 p1 = vertices(tetras(surfData(i,1))%vertexIds(vertIds(1)),:)
                 p2 = vertices(tetras(surfData(i,1))%vertexIds(vertIds(2)),:)
-                p3 = vertices(tetras(surfData(i,1))%vertexIds(vertIds(3)),:)
-            
-                ! get area normal vectors
-                ems%ElemData(i,1) = surfData(i,1)
-                ems%ElemData(i,2) = surfData(i,2)
+                p3 = vertices(tetras(surfData(i,1))%vertexIds(vertIds(3)),:)                
                 if (i == 1) then
                     ems%area(1) = 0.5_dp*norm(cross(p2-p1,p3-p1))
                 else 
                     ems%area(i) = 0.5_dp*norm(cross(p2-p1,p3-p1)) + ems%area(i-1)
                 end if 
+                
         end do
         
+        ! normalize area
         ems%area = ems%area/ems%area(size(surfData,1))
         
     end subroutine CreateEmissionSurf
