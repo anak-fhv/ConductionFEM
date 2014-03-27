@@ -35,11 +35,15 @@ module transient
 
 	subroutine transientsolve(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,	&
 	syInit)
-		integer :: i,j,k,n,nstep,iaSt(:),jaSt(:),iaCp(:),jaCp(:)
+		integer :: i,j,k,fno,n,nstep,iaSt(:),jaSt(:),iaCp(:),jaCp(:)
 		real(8) :: tstep,tfinal,sySt(:),syCp(:),sySrc(:),syInit(:)
 		real(8),allocatable :: kTprod(:),rhs(:),diffT(:),newT(:),	&
 		k1(:),k2(:),k3(:),k4(:)
+		character(*),parameter :: objdir="../obj/"
+		character(6) :: fname
 
+		tstep = 1
+		tfinal = 10
 		n = size(sySrc,1)
 		allocate(kTprod(n))
 		allocate(rhs(n))
@@ -50,23 +54,33 @@ module transient
 		allocate(k3(n))
 		allocate(k4(n))
 
-		call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,syInit,kTprod)
-		rhs = sySrc - kTprod
-		call timegradient(syCp,iaCp,jaCp,rhs,k1)
-		newT = syInit + (tstep/2.d0)*k1
-		call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,newT,kTprod)
-		rhs = sySrc - kTprod
-		call timegradient(syCp,iaCp,jaCp,rhs,k2)
-		newT = syInit + (tstep/2.d0)*k2
-		call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,newT,kTprod)
-		rhs = sySrc - kTprod
-		call timegradient(syCp,iaCp,jaCp,rhs,k3)
-		newT = syInit + tstep*k3
-		call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,newT,kTprod)
-		rhs = sySrc - kTprod
-		call timegradient(syCp,iaCp,jaCp,rhs,k4)
+		nstep = tfinal/tstep + 1
 
-		syInit = syInit + (tstep/6)*(k1 + 2*k2 + 2*k3 + k4)
+		do i = 1,nstep
+			call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,syInit,kTprod)
+			rhs = sySrc - kTprod
+			call timegradient(syCp,iaCp,jaCp,rhs,k1)
+			newT = syInit + (tstep/2.d0)*k1
+			call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,newT,kTprod)
+			rhs = sySrc - kTprod
+			call timegradient(syCp,iaCp,jaCp,rhs,k2)
+			newT = syInit + (tstep/2.d0)*k2
+			call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,newT,kTprod)
+			rhs = sySrc - kTprod
+			call timegradient(syCp,iaCp,jaCp,rhs,k3)
+			newT = syInit + tstep*k3
+			call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,newT,kTprod)
+			rhs = sySrc - kTprod
+			call timegradient(syCp,iaCp,jaCp,rhs,k4)
+			syInit = syInit + (tstep/6)*(k1 + 2*k2 + 2*k3 + k4)
+
+			j = 100*i + 10*i + i
+			write(fname,'(a,a,i2)') "res",j
+			open(j,file=objdir//fname)
+			do k=1,n
+				write(j,'f12.7') syInit(k)
+			end do
+		end do
 
 	end subroutine transientsolve
 
