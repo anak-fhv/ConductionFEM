@@ -43,6 +43,9 @@ $(OBJDIR)/htfem.o: $(OBJDIR)/readmesh.o $(OBJDIR)/element.o \
 $(OBJDIR)/postproc.o: $(OBJDIR)/element.o | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c postproc.f90 -o $(OBJDIR)/postproc.o
 
+$(OBJDIR)/transient.o: $(OBJDIR)/assembly.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c transient.f90 -o $(OBJDIR)/transient.o
+
 $(OBJDIR)/assembly.o: | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c assembly.f90 -o $(OBJDIR)/assembly.o
 
