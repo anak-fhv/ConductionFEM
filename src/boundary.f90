@@ -9,22 +9,26 @@ module boundary
 ! Routine to read boundary conditions from the data file
 !-------------------------------------------------------------------
     subroutine readboundaryconditions(meshdetails, boundaryconditions, &
-    kvals, boundaryvalues, Tambient, generation, generationrate)
+    kvals, domRhos, domCs, boundaryvalues, Tambient, generation,	   &
+	transience,	generationrate)
         integer,parameter :: datafilenum=401
         character(len=*),parameter :: filename='datafile.dat'
         integer,dimension(7) :: meshdetails
         integer :: numdomains,numboundaries,i,j
-        logical :: generation
+        logical :: generation,transience
         integer,dimension(:),allocatable :: boundaryconditions
         real(8) :: Tambient
 		real(8),optional :: generationrate
-        real(8),dimension(:),allocatable :: kvals,boundaryvalues
+        real(8),dimension(:),allocatable :: kvals,boundaryvalues,		&
+		domRhos(:),domCs(:)
 
         numdomains = meshdetails(6)
         numboundaries = meshdetails(7)
 		allocate(boundaryconditions(numboundaries))
 		allocate(kvals(numdomains))
 		allocate(boundaryvalues(numboundaries))
+		allocate(domRhos(meshdetails(6)))
+		allocate(domCs(meshdetails(6)))
         boundaryvalues = 0.0d0
         boundaryconditions = 4
         open(datafilenum,file=filename,status='old')
@@ -34,6 +38,12 @@ module boundary
 			read(datafilenum,*)
             read(datafilenum,*) kvals(i)
         end do
+		do i=1,meshdetails(6)
+			read(datafilenum,*)
+			read(datafilenum,*) domRhos(i)
+			read(datafilenum,*)
+			read(datafilenum,*) domCs(i)
+		end do
 		read(datafilenum,*)
         read(datafilenum,*) boundaryconditions
         read(datafilenum,*)
@@ -41,11 +51,14 @@ module boundary
         read(datafilenum,*)
         read(datafilenum,*) Tambient
         read(datafilenum,*)
+        read(datafilenum,*) transience
+        read(datafilenum,*)
         read(datafilenum,*) generation
         if(generation) then
             read(datafilenum,*)
             read(datafilenum,*) generationrate
         end if
+
     end subroutine readboundaryconditions
 !-------------------------------------------------------------------
 ! END subroutine to read boundary conditions from data file

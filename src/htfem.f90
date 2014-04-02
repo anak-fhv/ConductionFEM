@@ -6,6 +6,7 @@ module htfem
 	use assembly
 	use solver
 	use postproc
+	use transient
 
 	implicit none
 
@@ -15,23 +16,24 @@ module htfem
 		integer,parameter :: resfilenum = 101, outfilenum = 102			! Files to store results and other output
 		integer :: nNodes,nElems,nDoms,nSurfs,elDom,fcBytype,i,j,k,	&	! Prefixes: n=>number, el=>element, fc=>face
 				   meshVals(7),elNodes(4),elByfaces(4),iter				! by=>boundary, sf=>surface, gn=>generation, no=>node
-		integer,allocatable :: doElems(:),byCs(:),syRowPtr(:),		&	! do=>domain, sy=>global system
-							   syCols(:),connTab(:,:),sfElems(:,:)
+		integer,allocatable :: doElems(:),byCs(:),stRowPtr(:),		&	! do=>domain, sy=>global system
+							   stCols(:),cpRowPtr(:),cpCols(:),		&
+							   connTab(:,:),sfElems(:,:)
 		real(8),parameter :: kDefault = 1.d0
 		real(8) :: elVol,tAmbient,gnVal,elK,tc,qBHigh,qBLow,		&
 				   byTemp(4),bySrc(4),gnSrc(4),elVerts(4,3),		&
-				   elSpfns(4,4),elSt(4,4),bySt(4,4)
+				   elSpfns(4,4),elSt(4,4),bySt(4,4),elCp(4,4)
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
-							   vF(:)
+							   vF(:),domRhos(:),domCs(:),syCp(:)
 		character(*),parameter :: objdir = "../obj/",				&
 								  resfile = objdir//"results.out",	&
 								  outfile = objdir//"outputs.out"
 		character(16),allocatable :: sfFcname(:)
-		logical,parameter :: gnDefault = .false.
-		logical ::	gnUser
-		type(noderow) :: noElemPart(4)
-		type(noderow),allocatable :: noSys(:)
+		logical,parameter :: gnDefault = .false.,trDefault = .false.
+		logical ::	gnUser,trUser,useRK
+		type(noderow) :: noElemPart(4),cpElemPart(4)
+		type(noderow),allocatable :: stNo(:),cpNo(:)
 
 		call getmeshdata(meshVals,noVerts,connTab,doElems,			&
 		sfFcname,sfElems)
@@ -46,7 +48,7 @@ module htfem
 		write(*,*) "System size: ", nNodes
 		allocate(sySrc(nNodes))
 		allocate(syTvals(nNodes))
-		allocate(noSys(nNodes))
+		allocate(stNo(nNodes))
 
 		if(nDoms .gt. 1) then
 			allocate(vF(nDoms))
@@ -56,8 +58,14 @@ module htfem
 		sySrc = 0.d0
 		syTvals = 0.d0
 
-		call readboundaryconditions(meshVals,byCs,domKs,sfVals,		&
-		tAmbient,gnUser)
+		call readboundaryconditions(meshVals,byCs,domKs,domRhos,	&
+		domCs,sfVals,tAmbient,trUser,gnUser)
+
+		trUser = .true.
+
+		if(trUser) then
+			allocate(cpNo(nNodes))
+		end if
 
 		do i=1,nElems
 
@@ -70,6 +78,10 @@ module htfem
 !	Call stiffness functions
 			call shapefunctions(elVerts,elVol,elSpfns)
 			call elementstiffness(elSpfns,elVol,elK,elSt)
+
+			if(trUser) then
+				call getcapacitance(elDom,elVol,domCs,domRhos,elCp)
+			end if
 
 			if(nDoms .gt. 1) then
 				vF(elDom) = vF(elDom) + elVol
@@ -94,46 +106,66 @@ module htfem
 			end if
 
 !	Assemble the noderows
-			noElemPart = noSys(elNodes)
+			noElemPart = stNo(elNodes)
 			call assemble_noderows(noElemPart,elNodes,elSt)
-			noSys(elNodes) = noElemPart
+			stNo(elNodes) = noElemPart
+
+			cpElemPart = cpNo(elNodes)
+			call assemblecapacitance(cpElemPart,elNodes,elCp)
+			cpNo(elNodes) = cpElemPart
 
 		end do
 
-		call setupfinalequations(noSys,sySrc,syTvals)
+		if(trUser) then
+!			call readinitialvalues(syTvals)
+			syTvals = 100.d0
+		else
+			call setupfinalequations(stNo,sySrc,syTvals)
+		end if
 
-		call collapse_noderows(noSys,sySt,syCols,syRowPtr)
+		call collapse_noderows(stNo,sySt,stCols,stRowPtr)
 
-		deallocate(noSys)
+		if(trUser) then
+			call collapse_noderows(cpNo,syCp,cpCols,cpRowPtr)
+		end if
+
+		deallocate(stNo)
+		deallocate(cpNo)
 
 		write(*,*) "Entered solution step"
 
-		call bicgstab(sySt,syRowPtr,syCols,sySrc,100000,revals,iter)
-		write(*,'(a,i5,2x,a)') "This program took: ",iter,			&
-		"iterations to converge."
+		if(trUser) then
+			useRK = .false.
+			call transientsolve(sySt,stRowPtr,stCols,syCp,cpRowPtr,		&
+			cpCols,sySrc,useRK,syTvals,noVerts)
+		else
+			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,revals,iter)
+			write(*,'(a,i5,2x,a)') "This program took: ",iter,			&
+			"iterations to converge."
 
-		open(resfilenum,file=resfile)
+			open(resfilenum,file=resfile)
 
-		do i=1,nNodes
-			write(resfilenum,'(3(f9.4,2x),f9.4)')noVerts(i,1:3), 	&
-			revals(i)
-		end do
+			do i=1,nNodes
+				write(resfilenum,'(3(f9.4,2x),f9.4)')noVerts(i,1:3), 	&
+				revals(i)
+			end do
 
-		write(resfilenum,*)
+			write(resfilenum,*)
 
-		call getflowrates(noVerts,connTab,doElems,domKs,sfElems,	&
-		reVals,(/1,2/),(/3,4/),3,qBLow,qBHigh)
+			call getflowrates(noVerts,connTab,doElems,domKs,sfElems,	&
+			reVals,(/1,2/),(/3,4/),3,qBLow,qBHigh)
 
-		if(nDoms .eq. 2) then
-			write(resfilenum,'(a,f9.4)') "Sample porosity:",		&
-			vF(1)/(sum(vF))
+			if(nDoms .eq. 2) then
+				write(resfilenum,'(a,f9.4)') "Sample porosity:",		&
+				vF(1)/(sum(vF))
+			end if
+
+			write(resfilenum,*) "Fluxes:"
+			write(resfilenum,'(a,f9.4)') "Boundary low:", qBLow
+			write(resfilenum,'(a,f9.4)') "Boundary high:", qBHigh
+
+			close(resfilenum)
 		end if
-
-		write(resfilenum,*) "Fluxes:"
-		write(resfilenum,'(a,f9.4)') "Boundary low:", qBLow
-		write(resfilenum,'(a,f9.4)') "Boundary high:", qBHigh
-
-		close(resfilenum)
 
 	end subroutine fem
 
@@ -186,21 +218,21 @@ module htfem
 		gcontrib = gval*(elvol/24.0d0)*(/1,1,1,1/)
 	end subroutine uniformgeneration
 
-	subroutine setupfinalequations(noSys,sySrc,syTvals)
+	subroutine setupfinalequations(stNo,sySrc,syTvals)
 		integer :: i
 		real(8) :: sySrc(:),syTvals(:)
-		type(noderow):: noSys(:)
+		type(noderow):: stNo(:)
 
-		do i=1,size(noSys,1)
+		do i=1,size(stNo,1)
 			if(syTvals(i) .ne. 0.0d0) then
-				if(allocated(noSys(i)%col)) then
-					deallocate(noSys(i)%val)
-					deallocate(noSys(i)%col)
+				if(allocated(stNo(i)%col)) then
+					deallocate(stNo(i)%val)
+					deallocate(stNo(i)%col)
 				end if
-				allocate(noSys(i)%col(1))
-				allocate(noSys(i)%val(1))
-				noSys(i)%col(1) = i
-				noSys(i)%val(1) = 1.0d0
+				allocate(stNo(i)%col(1))
+				allocate(stNo(i)%val(1))
+				stNo(i)%col(1) = i
+				stNo(i)%val(1) = 1.0d0
 				sySrc(i) = syTvals(i)
 			end if
 		end do

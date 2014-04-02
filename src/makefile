@@ -19,7 +19,8 @@ LIBS := 	$(LIBPATH)/libmkl_intel_lp64.a \
 OBJECTS	:= $(OBJDIR)/test.o $(OBJDIR)/htfem.o \
 		   $(OBJDIR)/readmesh.o $(OBJDIR)/element.o \
 		   $(OBJDIR)/assembly.o $(OBJDIR)/boundary.o \
-		   $(OBJDIR)/solver.o $(OBJDIR)/postproc.o
+		   $(OBJDIR)/solver.o $(OBJDIR)/postproc.o \
+		   $(OBJDIR)/transient.o
 
 # Make all target
 all: $(OBJECTS)
@@ -31,20 +32,21 @@ $(OBJDIR):
 $(OBJDIR)/test.o: $(OBJDIR)/htfem.o $(OBJDIR)/readmesh.o \
 				  $(OBJDIR)/element.o $(OBJDIR)/assembly.o \
 				  $(OBJDIR)/boundary.o $(OBJDIR)/solver.o \
-				  $(OBJDIR)/postproc.o | $(OBJDIR)
+				  $(OBJDIR)/postproc.o $(OBJDIR)/transient.o | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -c test.f90 -o $(OBJDIR)/test.o
 
 $(OBJDIR)/htfem.o: $(OBJDIR)/readmesh.o $(OBJDIR)/element.o \
 				   $(OBJDIR)/assembly.o $(OBJDIR)/boundary.o \
-				   $(OBJDIR)/solver.o $(OBJDIR)/postproc.o | $(OBJDIR)
+				   $(OBJDIR)/solver.o $(OBJDIR)/postproc.o \
+				   $(OBJDIR)/transient.o | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c htfem.f90 -o $(OBJDIR)/htfem.o
 
 
+$(OBJDIR)/transient.o: $(OBJDIR)/assembly.o $(OBJDIR)/solver.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c transient.f90 -o $(OBJDIR)/transient.o
+
 $(OBJDIR)/postproc.o: $(OBJDIR)/element.o | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c postproc.f90 -o $(OBJDIR)/postproc.o
-
-$(OBJDIR)/transient.o: $(OBJDIR)/assembly.o | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c transient.f90 -o $(OBJDIR)/transient.o
 
 $(OBJDIR)/assembly.o: | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c assembly.f90 -o $(OBJDIR)/assembly.o
