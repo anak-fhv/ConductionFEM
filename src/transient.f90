@@ -51,14 +51,15 @@ module transient
 
 	subroutine transientFD(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,		&
 	syInit,noVerts)
+		integer,parameter :: trfileno=888,indices=(/1,3,5,7/)
 		integer :: i,j,fno,n,nv,ntstep,iter,iaSt(:),jaSt(:),iaCp(:),&
 		jaCp(:)
 		real(8) :: theta,tstep,tfinal,sySt(:),syCp(:),sySrc(:),		&
 		syInit(:),noVerts(:,:)
 		real(8),allocatable :: CKLhs(:),CKRhs(:),FRhs(:),Tnew(:),	&
 		kTRhs(:)
-		character(*),parameter :: objdir="../obj/"
-		character(6) :: fname,fgraph
+		character(*),parameter :: objdir="../obj/",ftr="trans.out"
+		character(6) :: fname
 
 		n = size(sySrc,1)
 		allocate(FRhs(n))
@@ -66,54 +67,46 @@ module transient
 		nv = size(sySt,1)
 		allocate(CKLhs(nv))
 		allocate(CKRhs(nv))
-		fgraph = "graph3"
 
-		tstep = 0.01d0
-		ntstep = 99
+		tstep = 0.0001d0
+		tfinal= 2.d0
+		nstep = tfinal/tstep + 1
 		theta = 1.d0
 		CKLhs = theta*tstep*sySt + syCp
 		CKRhs = syCp - (1.d0-theta)*tstep*sySt
 
-		open(8888,file=objdir//fgraph)
-		write(8888,'(3(f9.4,2x),f9.4)') 100.d0,100.d0,100.d0,100.d0
+		open(trfileno,file=objdir//ftr)
 		do i=1,ntstep
 			FRhs = theta*sySrc + (1.d0-theta)*sySrc
 			call mkl_dcsrgemv("N",n,CKRhs,iaSt,jaSt,syInit,kTRhs)
 			FRhs = tstep*FRhs + kTRhs
 			call bicgstab(CKLhs,iaCp,jaCp,FRhs,100000,Tnew,iter)
-			fno = 800+i
-			write(fname,'(a,i3)') "res",fno
-			open(fno,file=objdir//fname)
-			do j=1,n
-				write(fno,'(3(f9.4,2x),f9.4)') noVerts(j,:),Tnew(j)
-			end do
-			close(fno)
-			write(8888,'(3(f9.4,2x),f9.4)') Tnew(1),Tnew(13),		&
-			Tnew(25),Tnew(27)
+			write(trfileno,'(3(f9.4,2x),f9.4)') Tnew(indices)
 			syInit = Tnew
 			deallocate(Tnew)
 		end do
-		close(8888)
+		close(trfileno)
 	end subroutine transientFD
 
 	subroutine transientRK(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,		&
 	syInit)
+		integer,parameter :: trfileno=888,indices=(/1,3,5,7/)
 		integer :: i,j,k,fno,n,nstep,iaSt(:),jaSt(:),iaCp(:),jaCp(:)
 		real(8) :: tstep,tfinal,sySt(:),syCp(:),sySrc(:),syInit(:)
 		real(8),allocatable :: kTprod(:),rhs(:),diffT(:),newT(:),	&
 		k1(:),k2(:),k3(:),k4(:)
-		character(*),parameter :: objdir="../obj/"
-		character(6) :: fname
+		character(*),parameter :: objdir="../obj/",ftr="trans.out"
 
-		tstep = 1
-		tfinal = 10
 		n = size(sySrc,1)
 		allocate(kTprod(n))
 		allocate(rhs(n))
 		allocate(newT(n))
 
+		tstep = 0.0001
+		tfinal = 2
 		nstep = tfinal/tstep + 1
 
+		open(trfileno,file=objdir//ftr)
 		do i = 1,nstep
 			call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,syInit,kTprod)
 			rhs = sySrc - kTprod
@@ -132,12 +125,7 @@ module transient
 			call timegradient(syCp,iaCp,jaCp,rhs,k4)
 			syInit = syInit + (tstep/6)*(k1 + 2*k2 + 2*k3 + k4)
 
-			j = 100*i + 10*i + i
-			write(fname,'(a,i3)') "res",j
-			open(j,file=objdir//fname)
-			do k=1,n
-				write(j,'(f9.4)') syInit(k)
-			end do
+			write(trfileno,'(3(f9.4,2x),f9.4)') syInit(indices)
 			if(allocated(k1)) deallocate(k1)
 			if(allocated(k2)) deallocate(k2)
 			if(allocated(k3)) deallocate(k3)
