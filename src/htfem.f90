@@ -117,6 +117,7 @@ module htfem
 		end do
 
 		if(trUser) then
+! Empty call created for later implementation
 !			call readinitialvalues(syTvals)
 			syTvals = 100.d0
 		else
@@ -135,7 +136,7 @@ module htfem
 		write(*,*) "Entered solution step"
 
 		if(trUser) then
-			useRK = .false.
+			useRK = .true.
 			call transientsolve(sySt,stRowPtr,stCols,syCp,cpRowPtr,		&
 			cpCols,sySrc,useRK,syTvals,noVerts)
 		else

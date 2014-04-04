@@ -41,7 +41,6 @@ module transient
 		real(8) :: sySt(:),syCp(:),sySrc(:),syInit(:),noverts(:,:)
 		logical :: useRK
 
-		useRK = .false.
 		if(useRK) then
 			call transientRK(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,syInit)
 		else
@@ -84,8 +83,14 @@ module transient
 			write(trfileno,'(3(f9.4,2x),f9.4)') Tnew(indices)
 			syInit = Tnew
 			deallocate(Tnew)
+			open(trfileno,file=objdir//ftr)
+			do j=1,n
+				write(trfileno,'(3(f9.4,2x),f9.4)') noVerts(j,:),	&
+				syInit(j)
+			end do
+			close(trfileno)
 		end do
-		close(trfileno)
+		
 	end subroutine transientFD
 
 	subroutine transientRK(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,		&
@@ -106,7 +111,6 @@ module transient
 		tfinal = 2
 		nstep = tfinal/tstep + 1
 
-		open(trfileno,file=objdir//ftr)
 		do i = 1,nstep
 			call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,syInit,kTprod)
 			rhs = sySrc - kTprod
@@ -124,12 +128,16 @@ module transient
 			rhs = sySrc - kTprod
 			call timegradient(syCp,iaCp,jaCp,rhs,k4)
 			syInit = syInit + (tstep/6)*(k1 + 2*k2 + 2*k3 + k4)
-
-			write(trfileno,'(3(f9.4,2x),f9.4)') syInit(indices)
 			if(allocated(k1)) deallocate(k1)
 			if(allocated(k2)) deallocate(k2)
 			if(allocated(k3)) deallocate(k3)
 			if(allocated(k4)) deallocate(k4)
+			open(trfileno,file=objdir//ftr)
+			do j=1,n
+				write(trfileno,'(3(f9.4,2x),f9.4)') noVerts(j,:),	&
+				syInit(j)
+			end do
+			close(trfileno)
 		end do
 
 	end subroutine transientRK
