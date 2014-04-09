@@ -42,15 +42,17 @@ module transient
 		logical :: useRK
 
 		if(useRK) then
-			call transientRK(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,syInit)
+			call transientRK(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,	&
+			syInit,noVerts)
 		else
-			call transientFD(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,syInit,noVerts)
+			call transientFD(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,	&
+			syInit,noVerts)
 		end if
 	end subroutine transientsolve
 
 	subroutine transientFD(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,		&
 	syInit,noVerts)
-		integer,parameter :: trfileno=888,indices=(/1,3,5,7/)
+		integer,parameter :: trfileno=888
 		integer :: i,j,fno,n,nv,ntstep,iter,iaSt(:),jaSt(:),iaCp(:),&
 		jaCp(:)
 		real(8) :: theta,tstep,tfinal,sySt(:),syCp(:),sySrc(:),		&
@@ -69,7 +71,7 @@ module transient
 
 		tstep = 0.0001d0
 		tfinal= 2.d0
-		nstep = tfinal/tstep + 1
+		ntstep = tfinal/tstep + 1
 		theta = 1.d0
 		CKLhs = theta*tstep*sySt + syCp
 		CKRhs = syCp - (1.d0-theta)*tstep*sySt
@@ -80,7 +82,6 @@ module transient
 			call mkl_dcsrgemv("N",n,CKRhs,iaSt,jaSt,syInit,kTRhs)
 			FRhs = tstep*FRhs + kTRhs
 			call bicgstab(CKLhs,iaCp,jaCp,FRhs,100000,Tnew,iter)
-			write(trfileno,'(3(f9.4,2x),f9.4)') Tnew(indices)
 			syInit = Tnew
 			deallocate(Tnew)
 			open(trfileno,file=objdir//ftr)
@@ -94,10 +95,11 @@ module transient
 	end subroutine transientFD
 
 	subroutine transientRK(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,		&
-	syInit)
-		integer,parameter :: trfileno=888,indices=(/1,3,5,7/)
-		integer :: i,j,k,fno,n,nstep,iaSt(:),jaSt(:),iaCp(:),jaCp(:)
-		real(8) :: tstep,tfinal,sySt(:),syCp(:),sySrc(:),syInit(:)
+	syInit,noVerts)
+		integer,parameter :: trfileno=888
+		integer :: i,j,k,fno,n,ntstep,iaSt(:),jaSt(:),iaCp(:),jaCp(:)
+		real(8) :: tstep,tfinal,sySt(:),syCp(:),sySrc(:),syInit(:),	&
+		noVerts(:,:)
 		real(8),allocatable :: kTprod(:),rhs(:),diffT(:),newT(:),	&
 		k1(:),k2(:),k3(:),k4(:)
 		character(*),parameter :: objdir="../obj/",ftr="trans.out"
@@ -109,9 +111,9 @@ module transient
 
 		tstep = 0.0001
 		tfinal = 2
-		nstep = tfinal/tstep + 1
+		ntstep = tfinal/tstep + 1
 
-		do i = 1,nstep
+		do i = 1,ntstep
 			call mkl_dcsrgemv("N",n,sySt,iaSt,jaSt,syInit,kTprod)
 			rhs = sySrc - kTprod
 			call timegradient(syCp,iaCp,jaCp,rhs,k1)
