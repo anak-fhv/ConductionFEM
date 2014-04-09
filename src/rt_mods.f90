@@ -18,7 +18,7 @@ module rt_types
     implicit none
     
     type :: tetraElement
-        integer, dimension(4)    :: vertexIds=0   ! ID of vertices of the tetra element
+        integer, dimension(4)    :: vertexIds=0   ! ID ofvertex vertices of the tetra element
         
         integer, dimension(4,2)  :: neighbors=0   ! information about of neighboring elements
         ! In above array the row index relates to the 4 faces of the element. 
@@ -30,6 +30,7 @@ module rt_types
         !real(dp), dimension(4,4) :: shape_funcs ! shape functions
         
         integer                  :: domain=0      ! to which domain the tetra belongs
+        integer                  :: nAbsorbed=0   ! number of absorbed elements
     
     end type tetraElement
     
@@ -44,6 +45,7 @@ module rt_types
         real(dp), dimension(3) :: point, direction ! current point and its direction
         integer                :: tetraID          ! current tetraeder indes
         integer                :: faceID           ! current face index
+        real(dp)               :: length=0.0_dp    ! distance travelled
     end type
     
 end module rt_types       
@@ -68,7 +70,7 @@ module math_funs
         nzeros = count(list == 0)
         if (nzeros == 0) return
  
-        ! more of a debuuging feature, can be commented 
+        ! more of a debuuging feature, can be commented size
         if (minval(list) < 0) then
             write(*,*) "list should not contain negative entries!"
             write(*,*) list
@@ -125,7 +127,7 @@ module math_funs
         real(dp), intent(in) :: v(:)
   
         norm = sqrt(dot_product(v,v))
-   
+
    end function norm
   
     ! wrapper for random numbers
@@ -144,7 +146,6 @@ end module math_funs
 
 
 module rt_funcs
-
     use rt_types
     use rt_constants
     implicit none
@@ -435,7 +436,7 @@ module pre_process_data
        
         integer, intent(in)                            :: npart
         type(tetraElement), intent(inout)              :: tetraData(:)
-        integer                                        :: alloc_status, n, k
+        integer                                        :: alloc_status, n, k, r
         integer, dimension(:), allocatable             :: list, id_start, id_end
         integer, dimension(1)                          :: idFirstZero, maxElem
         
@@ -452,14 +453,17 @@ module pre_process_data
         call check_alloc_error(alloc_status, "id_start list")
         allocate(id_end(npart),stat=alloc_status)
         call check_alloc_error(alloc_status, "id_end list")
+        r = maxElem(1)/npart
         do n = 1,npart
-            id_start(n) = 1 +  (n-1)*(maxElem(1)/npart)
-            id_end(n) = n*maxElem(1)/npart
+            id_start(n) = 1 +  (n-1)*r
+            id_end(n) = n*r
             if (n == npart) id_end(n) = maxElem(1)
         end do
         
         write(*,*) "number of partitions ", npart
         write(*,*) "number of valid elements ", maxElem
+        write(*,*) id_start
+        write(*,*) id_end
         
         ! loop over all partitions and perform searches
         do n = 1,npart
@@ -683,8 +687,8 @@ module pre_process_data
         do i =1,size(surfData,1)
             
                 ! index of tetraeder and the index for the face on the surface 
-                ems%ElemData(i,1) = surfData(i,1)
-                ems%ElemData(i,2) = surfData(i,2)
+                ems%elemData(i,1) = surfData(i,1)
+                ems%elemData(i,2) = surfData(i,2)
                 
                 ! determine vertices for calculating the face area
                 call return_facevertIds(surfData(i,2),vertIds)           
@@ -704,5 +708,125 @@ module pre_process_data
         
     end subroutine CreateEmissionSurf
     
+    ! write out data from pre-processing
+    subroutine WriteData(tetraData, vertices, emSurf, file_name)
+    
+        type(tetraElement), intent(in)      :: tetraData(:)
+        real(dp), intent(in)                :: vertices(:,:)
+        type(emissionSurface), intent(in)   :: emSurf(:)
+        character(len=*), intent(in)        :: file_name
+        character(len=100)                  :: fname
+        integer                             :: io_error, n, k, write_error
+        
+        ! create file from exisiting file-name
+        fname = file_name(1:index(file_name,".msh")-1)//".data"
+        open(unit=22, file=fname, status='replace', action='write', iostat=io_error)       
+        call check_io_error(io_error,"opening file for write-out")
+        
+        ! write values for number of various elements
+        write(22,'(3(1x,i9))') size(vertices,1), size(tetraData), size(emSurf)
+        
+        ! write vertices
+        do n = 1,size(vertices,1)
+            write(22,'(3(1x,3e14.6))', iostat=write_error) vertices(n,:) 
+            call check_io_error(write_error,"writing vertex data")
+        end do
+        
+        
+        ! write tetraData (vertices and domain)
+        do n = 1,size(tetraData)
+            write(22,'(5(1x,i8))',iostat=write_error) tetraData(n)%vertexIds, tetraData(n)%domain 
+            call check_io_error(write_error,"writing tetra data")
+        end do
+        
+        ! write tetraData (connections)
+        do n = 1, size(tetraData)
+            write(22,'(1x,4(i8,1x,i2))',iostat=write_error) transpose(tetraData(n)%neighbors) 
+            call check_io_error(write_error,"writing tetra data part 2")
+        end do
+        
+        ! write emission surface information
+        do n = 1, size(emSurf)
+            write(22,'(1x,i8,1x,a)',iostat=write_error) size(emSurf(n)%area), trim(emSurf(n)%name)
+            call check_io_error(write_error,"writing emission surface info")
+            
+            do k=1,size(emSurf(n)%area)
+                write(22,'(1x,i8,1x,i2,2x,3e14.6)',iostat=write_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
+                call check_io_error(write_error,"writing emission surface data")
+            end do
+        end do    
+        
+        ! close file
+        close(unit=22)
+  
+    end subroutine WriteData
+   
+    ! read data from exisiting pre-processing file
+    subroutine ReadData(tetraData, vertices, emSurf,file_name)
+    
+        type(tetraElement), allocatable, dimension(:), intent(out)    :: tetraData
+        real(dp), allocatable, dimension(:,:), intent(out)            :: vertices
+        type(emissionSurface), allocatable, dimension(:), intent(out) :: emSurf
+        character(len=*), intent(in)                                  :: file_name
+        integer :: io_error, n, k, read_error, nVertices, nTetra, nSurf, alloc_status, nElem                                        
+        logical :: l
+        
+        ! check if file exists
+        inquire(file=file_name, exist=l)
+        if (l .eqv. .false.) then
+            write (*,*) file_name//" does not exist!"
+            stop
+        end if
+        
+        ! open file
+        open(unit=23, file=file_name, status='old', action='read', iostat=io_error)       
+        call check_io_error(io_error,"opening file for reading pre-processed data")
+        
+        ! read information about element sizes
+        read(23,'(3(1x,i9))') nVertices, nTetra, nSurf
+        
+        ! allocate vertices and read vertices
+        allocate(vertices(nVertices,3), stat=alloc_status)
+        call check_alloc_error(alloc_status, "vertex array")
+        do n = 1,nVertices
+            read(23,'(3(1x,3e14.6))', iostat=read_error) vertices(n,:) 
+            call check_io_error(read_error,"reading vertex data")
+        end do
+        
+        ! allocate tetra data and read information
+        allocate(tetraData(nTetra), stat=alloc_status)
+        call check_alloc_error(alloc_status, "tetraData array")       
+        do n = 1,nTetra
+            read(23,'(5(1x,i8))',iostat=read_error) tetraData(n)%vertexIds, tetraData(n)%domain 
+            call check_io_error(read_error,"reading tetra data")
+        end do
+        do n = 1, nTetra
+            read(23,'(1x,4(i8,1x,i2))',iostat=read_error) (tetraData(n)%neighbors(k,1), tetraData(n)%neighbors(k,2), k=1,4)
+            call check_io_error(read_error,"reading tetra data part 2")
+        end do
+        
+        ! allocate emission surface and read information
+        allocate(emSurf(nSurf), stat=alloc_status)
+        call check_alloc_error(alloc_status, "emSurf array")
+        do n = 1, nSurf
+            read(23,'(1x,i8,1x,a)',iostat=read_error) nElem, emSurf(n)%name
+            call check_io_error(read_error,"writing emission surface info")
+            
+            allocate(emSurf(n)%area(nElem), stat=alloc_status)
+            call check_alloc_error(alloc_status, "emSurf%area array")
+            allocate(emSurf(n)%elemData(nElem,2), stat=alloc_status)
+            call check_alloc_error(alloc_status, "emSurf%elemData array")
+            
+            do k=1,nElem
+                read(23,'(1x,i8,1x,i2,2x,3e14.6)',iostat=read_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
+                call check_io_error(read_error,"writing emission surface data")
+            end do
+        end do    
+        
+        ! close file
+        close(unit=23)
+  
+   end subroutine ReadData
+
 
 end module pre_process_data

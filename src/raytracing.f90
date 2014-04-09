@@ -1,8 +1,8 @@
 ! RayTracing
 ! author: Steffen Finck
 ! contact: steffen.finck@fhv.at
-! date: 21.02.2014
-! version: 0.1
+! date: 08.04.2014
+! version: 0.4
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 !! main program
@@ -19,22 +19,40 @@ program raytracing
     type(tetraElement), dimension(:), allocatable    :: tetraData
     type(emissionSurface), dimension(:), allocatable :: emSurf
     real(dp), dimension(:,:), allocatable            :: vertices
-    integer                                          :: npart
+    integer                                          :: npart, k
+    real(dp)                                         :: dummy, t1, t2
     
     ! user input
-    file_name = "sphere.msh"
-    npart = 4
+    file_name = "sphere.data"
+    npart = 12
     emSurfNames = ['xLow'] ! right now this requires to state the correct dimension in above declaration       
-        
-    ! perform pre-processing
-    call read_mesh_data(file_name, emSurfNames, npart, tetraData, vertices, emSurf)
     
+    ! some internal bookkeeping
+    dummy = myRandom(2803)
+    
+    ! perform pre-processing
+    ! depending on the suffix of the input file either the pre-processing routine ...
+    if (index(file_name,".msh") > 0) then
+        call read_mesh_data(file_name, emSurfNames, npart, tetraData, vertices, emSurf)
+        call WriteData(tetraData, vertices, emSurf,file_name)
+    else
+        ! ... or an exisiting file is read
+        call ReadData(tetraData, vertices, emSurf, file_name)
+    end if
+    
+    call cpu_time(t1)
     ! create ray
-    call CreateRay(tetraData, vertices, emSurf(1), ray)
-    call TraceRay(tetraData, vertices, ray)
+    do k = 1,1
+        call CreateRay(tetraData, vertices, emSurf(1), ray)
+        call TraceRay(tetraData, vertices, ray)
+    end do
+    call cpu_time(t2)
+    
+    write(*,*) "run time", t2-t1
+    
     
     contains 
- 
+    
     ! given an emission surface, the following subroutine perform following steps:
     ! 1. select a face on the emission surface by roulette wheel selection
     ! 2. select a point within the triangular face based on 2 random numbers 
@@ -57,9 +75,9 @@ program raytracing
         real(dp), dimension(3,3)            :: M  
 
         ! get random tetraeder on the emission surface
-        psi = myRandom(2903) ! initialize random generator
+        psi = myRandom(0) ! initialize random generator
         
-        ! decision whether to start at the beginning or end of the list just for speed
+        ! decision whether to start at the beginning or end of the list (just for speed)
         if (psi > 0.5) then
             do i = size(ems%area)-1,1,-1
                 if (ems%area(i) < psi) exit
@@ -154,16 +172,16 @@ program raytracing
         
     end subroutine CreateRay
     
+    ! main raytracing routine
     subroutine TraceRay(tetraData, vertices, ray)
     
-        type(tetraElement), intent(in)      :: tetraData(:)
+        type(tetraElement), intent(inout)   :: tetraData(:)
         real(dp), intent(in)                :: vertices(:,:)
         type(rayContainer), intent(inout)   :: ray
         real(dp)                            :: kappa, sigma ! absorption and scattering coefficients (must be provided from somewhere)
-        real(dp)                            :: lAbs, lScat, alpha, temp
-        integer                             :: i, newFace
+        real(dp)                            :: lAbs, lScat
         integer, dimension(3)               :: vertIDs 
-        real(dp), dimension(3)              :: rp, v1, v2, nsf
+        real(dp), dimension(3)              :: rp, v1, v2
         logical                             :: test
         
         ! calculate length of initial ray
@@ -172,33 +190,62 @@ program raytracing
         
         lAbs = 1.0_dp/kappa*log(1/myRandom(0))
         lScat = 1.0_dp/sigma*log(1/myRandom(0))
-        
-        if (lAbs < lScat) then
+                
+        do
+            if (ray%length >= lAbs) then
+                write(*,*) "ray is absorbed"
+                tetraData(ray%tetraID)%nAbsorped = tetraData(ray%tetraID)%nAbsorped+1
+                exit
+            end if
             
-            ! perform absorption
-        else
+            call FindNextTetra(vertices,tetraData,ray)
             
-            ! perform scattering
+!             write(*,*) ray%faceID
+!             write(*,*) ray%tetraID
+!             write(*,*) ray%length
+!             write(*,*) ray%point
+!             write(*,*)
         
-        end if
+            if (ray%faceID == -1) then
+                write(*,*) "point on enclosure"
+                
+                exit
+            end if
         
-        write(*,*) lAbs
-        write(*,*) lScat
+            ! just some test
+            call return_facevertIds(ray%faceID, vertIDs)
+            rp = vertices(tetraData(ray%tetraID)%vertexIds(vertIDs(1)),:)
+            v1 = vertices(tetraData(ray%tetraID)%vertexIds(vertIDs(2)),:)   
+            v2 = vertices(tetraData(ray%tetraID)%vertexIds(vertIDs(3)),:)
+            test = PointInside(rp,v1,v2,ray%point)
+            
+            if (test .eqv. .false.) then
+                write(*,*) "POINT NOT ON TETRA FACE!!!"
+                stop
+            end if
+            
+        end do
         
-        ! below: current work ....
+    end subroutine TraceRay
+
+    ! find next tetra Element along ray direction
+    subroutine FindNextTetra(vertices,tetraData,ray)
         
-        write(*,*)
-        write(*,*) ray%faceID
-        write(*,*) ray%tetraID
+        type(tetraElement), intent(in)      :: tetraData(:)
+        real(dp), intent(in)                :: vertices(:,:)
+        type(rayContainer), intent(inout)   :: ray
+        real(dp) :: alpha, temp
+        integer  :: f, newFace
+        real(dp), dimension(3) :: rp, v1, v2, nsf
+        integer, dimension(3)  :: vertIDs
         
-        ! trace ray
         alpha = 100.0_dp  ! some large initial value for alpha
-        do i = 1,4
+        do f = 1,4
         
-            if (i == ray%faceID) cycle  ! is face where ray is emitted
+            if (f == ray%faceID) cycle  ! is face where ray is emitted
             
             ! 1 vertex and 2 vectors of current face
-            call return_facevertIds(i,vertIDs)
+            call return_facevertIds(f,vertIDs)
             rp = vertices(tetraData(ray%tetraID)%vertexIds(vertIDs(1)),:)
             v1 = vertices(tetraData(ray%tetraID)%vertexIds(vertIDs(2)),:) - rp  
             v2 = vertices(tetraData(ray%tetraID)%vertexIds(vertIDs(3)),:) - rp
@@ -209,37 +256,46 @@ program raytracing
 
             ! calculate length until intersection
             temp = (dot_product(nsf,rp) - dot_product(nsf,ray%point))/dot_product(nsf, ray%direction)
-            if (temp < 0) cycle
-            ! check if it is the shortest length
+            if (temp < 0) cycle ! length can not be negative
+            
+            ! check if temp is the shortest length so far
+            ! if true, current face is the face the ray will intersect
             if (temp < alpha) then
                 alpha = temp
-                newFace = i
+                newFace = f
             end if
-            
-            write(*,*) alpha
             
         end do
         
+        ! update ray container
+        ray%length = ray%length+norm(alpha*ray%direction)
         ray%point = ray%point + alpha*ray%direction
-        
-        ! get tetraeder which shares the same face
-        temp = tetraData(ray%tetraID)%neighbors(newFace,1)
-        ray%faceID = tetraData(ray%tetraID)%neighbors(newFace,2)
-        ray%tetraID = temp    
-        
-        write(*,*)
-        write(*,*) ray%faceID
-        write(*,*) ray%tetraID
-        
-        call return_facevertIds(ray%faceID, vertIDs)
-        rp = vertices(tetraData(ray%tetraID)%vertexIds(vertIDs(1)),:)
-        v1 = vertices(tetraData(ray%tetraID)%vertexIds(vertIDs(2)),:)   
-        v2 = vertices(tetraData(ray%tetraID)%vertexIds(vertIDs(3)),:)
-        test = PointInside(rp,v1,v2,ray%point)
-        write(*,*) test
-        
-    end subroutine TraceRay
+        ray%faceID = tetraData(ray%tetraID)%neighbors(newFace,2)  
+        ray%tetraID = tetraData(ray%tetraID)%neighbors(newFace,1)     
     
+    end subroutine
+        
+    ! calculate refraction with Snell's law
+    subroutine SnellsLaw(incident, n1, n2, nsf, reflect, refract)
+        
+        real(dp), intent(in)                :: n1, n2  ! refractive indices
+        real(dp), dimension(3), intent(in)  :: incident, nsf ! incident direction and normal vector of plane
+        real(dp), dimension(3), intent(out) :: refract, reflect ! refraction and reflection direction
+        real(dp) :: cosAngle, ratio
+        
+        cosAngle = -dot_product(incident,nsf)
+        if (cosAngle < 0) then
+            cosAngle = -cosAngle
+            nsf = -nsf
+        end if
+        
+        reflect = incident + 2*cosAngle*nsf
+        
+        ratio = n1/n2
+        refract = ratio*incident + ratio*cosAngle*nsf - sqrt(1 - ratio**2*(1-cosAngle**2))*nsf
+   end subroutine SnellsLaw
+        
+        
     ! test whether a point is inside a triangle or not
     function PointInside(p1,p2,p3,tp)
         
@@ -265,5 +321,5 @@ program raytracing
     
     end function
   
-  
+   
 end program raytracing 
