@@ -303,7 +303,7 @@ module pre_process_data
         call cpu_time(t1) ! just out of interest measure time of routine
         
         ! check if file exists
-        inquire(file=file_name, exist=l)
+        inquire(file="../data/"//file_name, exist=l)
         if (l .eqv. .false.) then
             write (*,*) file_name//" does not exist!"
             stop
@@ -314,7 +314,7 @@ module pre_process_data
         write(*,*)
     
         ! open file
-        open(unit=81, file=file_name, status='old', action='read', iostat=io_error)       
+        open(unit=81, file="../data/"//file_name, status='old', action='read', iostat=io_error)       
         call check_io_error(io_error,"opening file",81)
     
         ! read first 3 lines, only the 3rd line is of interest
@@ -754,7 +754,7 @@ module pre_process_data
         integer                             :: io_error, n, k, write_error
         
         ! create file from exisiting file-name
-        fname = "../obj/"//file_name(1:index(file_name,".msh")-1)//".dat"
+        fname = "../data/"//file_name(1:index(file_name,".msh")-1)//".dat"
         open(unit=82, file=fname, status='replace', action='write', iostat=io_error)       
         call check_io_error(io_error,"opening file for write-out",82)
         
@@ -807,14 +807,14 @@ module pre_process_data
         logical :: l
         
         ! check if file exists
-        inquire(file="../obj/"//file_name, exist=l)
+        inquire(file="../data/"//file_name, exist=l)
         if (l .eqv. .false.) then
-            write (*,*) file_name//" does not exist!"
+            write (*,*) trim(file_name)//" does not exist!"
             stop
         end if
         
         ! open file
-        open(unit=83, file="../obj/"//file_name, status='old', action='read', iostat=io_error)       
+        open(unit=83, file="../data/"//file_name, status='old', action='read', iostat=io_error)       
         call check_io_error(io_error,"opening file for reading pre-processed data",83)
         
         ! read information about element sizes
@@ -981,7 +981,7 @@ module tracing
         ray%direction = matmul(M,ndir)
         
         ! second rotation with normal vector as rotation axis
-        call RotationMatrix(ndir, dir1, asin(sqrt(myRandom(0))), M)
+        call RotationMatrix(ndir, dir1, 2.0_dp*pi*myRandom(0), M)
         ray%direction = matmul(M,ray%direction)
         
 !         write(*,*)
