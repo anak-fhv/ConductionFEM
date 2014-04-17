@@ -6,10 +6,10 @@
 module rt_constants
 
     implicit none
-    integer, parameter   :: dp=selected_real_kind(p=14)
-    real(dp), parameter  :: pi=3.14159265358979
-    character, parameter :: objFolder = "../obj/"
-    character, parameter :: dataFolder = "../data/"
+    integer, parameter          :: dp=selected_real_kind(p=14)
+    real(dp), parameter         :: pi=3.14159265358979
+    character(len=7), parameter :: objFolder = "../obj/"
+    character(len=8), parameter :: dataFolder = "../data/"
 end module rt_constants
 
 

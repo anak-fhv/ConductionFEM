@@ -12,6 +12,42 @@ module pre_process_data
     
     contains
     
+    ! wrapper for starting pre-processing. Basically checks whether provided input file exists,
+    ! and calls appropriate pre-processing routine. In case file does not exist, it checks 
+    ! if the respective other file (either *.msh or *.data) exists and calls respective routine.
+    subroutine start_preprocessing(file_name, emSurfNames, npart, tetraData, vertices, ems)
+    
+	    character(len=*), intent(in)                                  :: file_name 
+        character(len=*), intent(in)                                  :: emSurfNames(:)
+        integer, intent(in)                                           :: npart
+        type(tetraElement), dimension(:), allocatable, intent(out)    :: tetraData
+        real(dp), dimension(:,:), allocatable, intent(out)            :: vertices 
+        type(emissionSurface), dimension(:), allocatable, intent(out) :: ems
+        logical                                                       :: l
+                
+        ! check file provided by user exists
+        ! first check for *.data file (since it is faster)
+        inquire(file=dataFolder//trim(file_name)//".data", exist=l)
+        if (l .eqv. .true.) then
+			 write(*,*) 
+	         write(*,*) "using "//trim(file_name)//".data as input"
+	         write(*,*)
+             call ReadData(tetraData, vertices, ems, trim(file_name)//".data")             
+        else ! use *.msh file since *.data does not exist
+	        inquire(file=dataFolder//trim(file_name)//".msh", exist=l)
+	        if (l .eqv. .false.) then
+		        write(*,*) trim(file_name)//" does not exist! (neither as .msh or .data)"
+	            stop
+            end if
+            write(*,*) 
+	        write(*,*) "using "//trim(file_name)//".msh as input"
+	        write(*,*)
+            call read_mesh_data(trim(file_name)//".msh", emSurfNames, npart, tetraData, vertices, ems)
+	        call WriteData(tetraData, vertices, ems,trim(file_name)//".msh")
+        end if    
+    
+    end subroutine start_preprocessing
+    
     ! main routine which perform reading of input data and calls routines for
     ! creating emission surfaces and populates tetraElement-type
     subroutine read_mesh_data(file_name, emSurfNames, npart, tetraData, vertices, ems)
@@ -22,7 +58,6 @@ module pre_process_data
         type(tetraElement), dimension(:), allocatable, intent(out)    :: tetraData
         real(dp), dimension(:,:), allocatable, intent(out)            :: vertices 
         type(emissionSurface), dimension(:), allocatable, intent(out) :: ems
-        logical                                                       :: l
         integer                                                       :: io_error, read_error, alloc_status, i, j, k, n
         integer                                                       :: nVertices, nTetra, nHexa, nPyr, nWedges, nDomain, nSurface
         integer, dimension(:,:), allocatable                          :: surfData
@@ -34,19 +69,13 @@ module pre_process_data
     
         call cpu_time(t1) ! just out of interest measure time of routine
         
-        ! check if file exists
-        inquire(file="../data/"//file_name, exist=l)
-        if (l .eqv. .false.) then
-            write (*,*) file_name//" does not exist!"
-            stop
-        end if
         write(*,*)
         write(*,*) "Start Reading Input File"
         write(*,*) "==========================="
         write(*,*)
     
         ! open file
-        open(unit=81, file="../data/"//file_name, status='old', action='read', iostat=io_error)       
+        open(unit=81, file=dataFolder//file_name, status='old', action='read', iostat=io_error)       
         call check_io_error(io_error,"opening file",81)
     
         ! read first 3 lines, only the 3rd line is of interest
@@ -63,7 +92,7 @@ module pre_process_data
         allocate(vertices(nVertices,3), stat=alloc_status)
         call check_alloc_error(alloc_status, "vertex array")
         do n = 1,nVertices
-            read(81,'(3(1x,3e14.6))', iostat=read_error) vertices(n,:) 
+            read(81,'(3e14.6)', iostat=read_error) vertices(n,:) 
             call check_io_error(read_error,"reading vertex data",81)
         end do
         ! just some status messages
@@ -276,6 +305,7 @@ module pre_process_data
     
     end subroutine assign_neighbors
     
+    
     ! search for neighbors in 2 lists
     ! search routine:
     ! for each element in the 1st list a neighbor is looked for in the 2nd list 
@@ -335,6 +365,7 @@ module pre_process_data
         
     end subroutine find_neighbors
 
+    
     ! search for neighbors in single lists
     ! search routine:
     ! for each element in the list a neighbor is looked for in all following elements    
@@ -398,6 +429,7 @@ module pre_process_data
         
     end subroutine find_neighbors_single_list
 
+    
     ! filter list for zeros and update right index boundary
     subroutine filter_list(list, id_start, id_end)
     
@@ -418,6 +450,7 @@ module pre_process_data
     
     end subroutine filter_list
     
+    
     ! add neighbor data into tetraElement-type
     subroutine add_neighbor(tetra1, tetra2, face1, tetraData)
     
@@ -437,6 +470,7 @@ module pre_process_data
         tetraData(tetra2)%neighbors(face2,2) = face1
     
     end subroutine add_neighbor
+    
       
     ! create emission surface from surface data which includes
     ! calculating the area of each face and storing it in a
@@ -475,6 +509,7 @@ module pre_process_data
         
     end subroutine CreateEmissionSurf
     
+    
     ! write out data from pre-processing
     subroutine WriteData(tetraData, vertices, emSurf, file_name)
     
@@ -486,7 +521,7 @@ module pre_process_data
         integer                             :: io_error, n, k, write_error
         
         ! create file from exisiting file-name
-        fname = "../data/"//file_name(1:index(file_name,".msh")-1)//".data"
+        fname = dataFolder//file_name(1:index(file_name,".msh")-1)//".data"
         open(unit=82, file=fname, status='replace', action='write', iostat=io_error)       
         call check_io_error(io_error,"opening file for write-out",82)
         
@@ -495,10 +530,9 @@ module pre_process_data
         
         ! write vertices
         do n = 1,size(vertices,1)
-            write(82,'(3(1x,3e14.6))', iostat=write_error) vertices(n,:) 
+            write(82,'(3e14.6)', iostat=write_error) vertices(n,:) 
             call check_io_error(write_error,"writing vertex data",82)
         end do
-        
         
         ! write tetraData (vertices and domain)
         do n = 1,size(tetraData)
@@ -518,7 +552,7 @@ module pre_process_data
             call check_io_error(write_error,"writing emission surface info",82)
             
             do k=1,size(emSurf(n)%area)
-                write(82,'(1x,i8,1x,i2,2x,3e14.6)',iostat=write_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
+                write(82,'(1x,i8,1x,i2,2x,e14.6)',iostat=write_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
                 call check_io_error(write_error,"writing emission surface data",82)
             end do
         end do    
@@ -528,6 +562,7 @@ module pre_process_data
   
     end subroutine WriteData
    
+   
     ! read data from exisiting pre-processing file
     subroutine ReadData(tetraData, vertices, emSurf,file_name)
     
@@ -536,17 +571,9 @@ module pre_process_data
         type(emissionSurface), allocatable, dimension(:), intent(out) :: emSurf
         character(len=*), intent(in)                                  :: file_name
         integer :: io_error, n, k, read_error, nVertices, nTetra, nSurf, alloc_status, nElem                                        
-        logical :: l
-        
-        ! check if file exists
-        inquire(file="../data/"//file_name, exist=l)
-        if (l .eqv. .false.) then
-            write (*,*) trim(file_name)//" does not exist!"
-            stop
-        end if
         
         ! open file
-        open(unit=83, file="../data/"//file_name, status='old', action='read', iostat=io_error)       
+        open(unit=83, file=dataFolder//file_name, status='old', action='read', iostat=io_error)       
         call check_io_error(io_error,"opening file for reading pre-processed data",83)
         
         ! read information about element sizes
@@ -556,7 +583,7 @@ module pre_process_data
         allocate(vertices(nVertices,3), stat=alloc_status)
         call check_alloc_error(alloc_status, "vertex array")
         do n = 1,nVertices
-            read(83,'(3(1x,3e14.6))', iostat=read_error) vertices(n,:) 
+            read(83,'(3e14.6)', iostat=read_error) vertices(n,:) 
             call check_io_error(read_error,"reading vertex data",83)
         end do
         
@@ -585,7 +612,7 @@ module pre_process_data
             call check_alloc_error(alloc_status, "emSurf%elemData array")
             
             do k=1,nElem
-                read(83,'(1x,i8,1x,i2,2x,3e14.6)',iostat=read_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
+                read(83,'(1x,i8,1x,i2,2x,e14.6)',iostat=read_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
                 call check_io_error(read_error,"writing emission surface data",83)
             end do
         end do    

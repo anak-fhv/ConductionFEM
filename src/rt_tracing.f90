@@ -12,6 +12,42 @@ module tracing
     
     contains
     
+    subroutine start_tracing(tetraData, vertices, ems, file_name, nrays)
+    
+		type(tetraElement), intent(inout)      :: tetraData(:)
+        real(dp), intent(inout)                :: vertices(:,:)
+        type(emissionSurface), intent(inout)   :: ems(:)
+        character(len=*), intent(in)           :: file_name 
+        integer, intent(in)                    :: nrays
+        type(rayContainer)                     :: ray
+        real(dp) :: t1, t2, dummy
+        integer :: io_error, write_error, k
+        character(len=100) :: resFname
+        
+        ! initialize random generator
+        dummy = myRandom(2903)
+        
+        ! create file for output
+        resFname = objFolder//trim(file_name)//".res"
+        open(unit=81, file=resFname, action='write', status="new", iostat=io_error)       
+        call check_io_error(io_error,"creating file for results 1",81)
+        write(81,'(1x,a8,4(1x,a14))',iostat=write_error) "tetraID", "x", "y", "z", "absorbed"
+        call check_io_error(write_error,"writing results file",81)
+        close(unit=81, iostat=io_error)
+        call check_io_error(io_error,"closing file for results 1",81)
+        
+        ! do raytracing                 
+	    call cpu_time(t1)
+	    do k = 1,nrays
+	        call CreateRay(tetraData, vertices, ems(1), ray)
+	        call TraceRay(tetraData, vertices, ray, resFname)
+	    end do
+	    call cpu_time(t2)
+    
+	    write(*,*) "run time raytracing: ", t2-t1
+    
+    end subroutine start_tracing
+    
     ! given an emission surface, the following subroutine performs the following steps:
     ! 1. select a face on the emission surface by roulette wheel selection
     ! 2. select a point within the triangular face based on 2 random numbers 
@@ -128,12 +164,14 @@ module tracing
     end subroutine CreateRay
     
     ! main raytracing routine
-    subroutine TraceRay(tetraData, vertices, ray)
+    subroutine TraceRay(tetraData, vertices, ray, resFname)
     
         type(tetraElement), intent(inout)   :: tetraData(:)
         real(dp), intent(in)                :: vertices(:,:)
         type(rayContainer), intent(inout)   :: ray
-        real(dp)                            :: kappa, sigma ! absorption and scattering coefficients (must be provided from somewhere)
+        character(len=*), intent(in)        :: resFname
+        real(dp)                            :: kappa, sigma ! absorption and scattering coefficients 
+                                                            ! (must be provided fromsomewhere)
         real(dp)                            :: lAbs, lScat
         integer, dimension(3)               :: vertIDs 
         real(dp), dimension(3)              :: rp, v1, v2
@@ -147,14 +185,14 @@ module tracing
         lAbs = 1.0_dp/kappa*log(1/myRandom(0))
         lScat = 1.0_dp/sigma*log(1/myRandom(0))
         
-        open(unit=84, file="../obj/sphere-absorbed.out", action='write', iostat=io_error, position='append')       
+        open(unit=84, file=resFname, action='write', iostat=io_error, position='append')       
         call check_io_error(io_error,"opening file for results 1",84)
                 
         do
             if (ray%length >= lAbs) then
-                write(*,*) "ray is absorbed"
+!                 write(*,*) "ray is absorbed"
                 tetraData(ray%tetraID)%nAbsorbed = tetraData(ray%tetraID)%nAbsorbed+1
-                write(84,'(1x,i8,1x,3(3e14.6,1x),3e14.6)',iostat=write_error) ray%tetraID, ray%point, myRandom(0)
+                write(84,'(1x,i8,1x,3(e14.6,1x),e14.6)',iostat=write_error) ray%tetraID, ray%point, myRandom(0)
                 call check_io_error(write_error,"writing results 1",84)
                 counter = counter + 1
                 exit
@@ -169,7 +207,7 @@ module tracing
 !             write(*,*)
         
             if (ray%faceID == -1) then
-                write(*,*) "point on enclosure"
+!                 write(*,*) "point on enclosure"
                 
                 exit
             end if
