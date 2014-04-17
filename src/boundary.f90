@@ -155,6 +155,19 @@ module boundary
 		surfint = shapefuncsquaresurfint(fcnodes)
 		elht = (2.0d0*fcarea/24.0d0)*bv*surfint
 	end subroutine convectiveboundary
+
+	subroutine getPointSource(elVerts,genVal,pt,ptSrc)
+		integer :: i
+		real(8) :: elVol,genVal,pt(3),ptSrc(4),tp(3),elSpfns(4,4),	&
+		elVerts(4,3)
+
+		call shapefunctions(elVerts,elVol,elSpfns)
+		do i=1,4
+			tp = elSpfns(i,2:4)
+			ptsrc(i) = dot_product(tp,pt) + elSpfns(i,1)
+		end do
+		ptSrc = ptSrc*genVal
+	end subroutine getPointSource
 !-------------------------------------------------------------------
 ! END smaller subroutines
 !-------------------------------------------------------------------

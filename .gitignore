@@ -2,3 +2,9 @@
 **/*.msh
 **/*.out
 **/*.dat
+**/*.res
+**/*.gif
+**/*.jpg
+**/*.png
+**/*.bmp
+**/*.tiff
