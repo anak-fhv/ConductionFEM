@@ -24,7 +24,7 @@ program raytracing
     real(dp)                                         :: dummy, t1, t2
     
     ! user input
-    file_name = "sphere.msh"
+    file_name = "sphere.data"
     npart = 12
     emSurfNames = ['xLow'] ! right now this requires to state the correct dimension in above declaration       
     
