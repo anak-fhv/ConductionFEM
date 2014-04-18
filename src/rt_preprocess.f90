@@ -492,10 +492,8 @@ module pre_process_data
                 ems%elemData(i,2) = surfData(i,2)
                 
                 ! determine vertices for calculating the face area
-                call return_facevertIds(surfData(i,2),vertIds)           
-                p1 = vertices(tetras(surfData(i,1))%vertexIds(vertIds(1)),:)
-                p2 = vertices(tetras(surfData(i,1))%vertexIds(vertIds(2)),:)
-                p3 = vertices(tetras(surfData(i,1))%vertexIds(vertIds(3)),:)                
+                call return_facevertIds(surfData(i,2),vertIds)   
+                call return_coords(tetras(surfData(i,1)), vertices, vertIds, p1, p2, p3)                        
                 if (i == 1) then
                     ems%area(1) = 0.5_dp*norm(cross(p2-p1,p3-p1))
                 else 

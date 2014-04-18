@@ -25,7 +25,7 @@ program raytracing
     file_name = "sphere"
     npart = 12
     emSurfNames = ['xLow'] ! right now this requires to state the correct dimension in above declaration       
-    nrays = 10000000
+    nrays = 10
     
     call start_preprocessing(file_name, emSurfNames, npart, tetraData, vertices, emSurf)
     call start_tracing(tetraData, vertices, emSurf, file_name, nrays)

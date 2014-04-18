@@ -53,6 +53,20 @@ module rt_funcs
        
     end subroutine return_facevertIds    
     
+    ! returns the points (in x,y,z coordinates) of a tetraeder face
+    subroutine return_coords(tetra, vertices, vertIDs, p1, p2, p3)
+    
+	    type(tetraElement), intent(in)      :: tetra
+	    integer, intent(in), dimension(3)   :: vertIDs
+	    real(dp), intent(in)                :: vertices(:,:)
+	    real(dp), dimension(3), intent(out) :: p1, p2, p3
+	    
+	    p1 = vertices(tetra%vertexIds(vertIDs(1)),:)
+        p2 = vertices(tetra%vertexIds(vertIDs(2)),:)
+        p3 = vertices(tetra%vertexIds(vertIDs(3)),:)
+        
+    end subroutine return_coords
+    
     ! test whether a point is inside a triangle or not
     function PointInside(p1,p2,p3,tp)
         
@@ -70,11 +84,6 @@ module rt_funcs
         bc(2) = dot_product(na,ny)/dpna
         bc(3) = dot_product(na,nz)/dpna
         PointInside = (all(bc > 0e0_dp) .and. (abs(sum(bc) - 1) <= 1e-14_dp))
-        
-!         write(*,*) bc(1)
-!         write(*,*) bc(2)
-!         write(*,*) bc(3)
-!         write(*,*) 1-sum(bc)
     
     end function
     
