@@ -29,7 +29,7 @@ module tracing
         
         ! create file for output
         resFname = objFolder//trim(file_name)//".res"
-        open(unit=81, file=resFname, action='write', status="new", iostat=io_error)       
+        open(unit=81, file=resFname, action='write', status='replace', iostat=io_error)       
         call check_io_error(io_error,"creating file for results 1",81)
         write(81,'(1x,a8,4(1x,a14))',iostat=write_error) "tetraID", "x", "y", "z", "absorbed"
         call check_io_error(write_error,"writing header results file",81)
@@ -37,7 +37,7 @@ module tracing
         call check_io_error(io_error,"closing file for results 1",81)
         
         ! additional debbunging files
-        open(unit=82, file=objFolder//trim(file_name)//"-initrayloc.res", action='write', status="new", iostat=io_error)       
+        open(unit=82, file=objFolder//trim(file_name)//"-initrayloc.res", action='write', status='replace', iostat=io_error)       
         call check_io_error(io_error,"creating debug-file 1",82)
         write(82,'(3(a14))',iostat=write_error) "x", "y", "z"
         call check_io_error(write_error,"writing debug-file 1 header",82)
@@ -73,7 +73,7 @@ module tracing
         integer, dimension(3) :: vertIDs 
         real(dp) :: psi, theta, b, c, d
         real(dp), dimension(3) :: p1, p2, p3, dir1, dir2, dir21, ds1, ndir
-        real(dp), dimension(3,3) :: M  
+        real(dp), dimension(3,3) :: M1, M2  
 
         ! get random tetraeder on the emission surface
         psi = myRandom(0) 
@@ -160,12 +160,13 @@ module tracing
 
         ! first rotate about about a vector in the plane
         dir1 = dir1/b
-        call RotationMatrix(dir1, ndir, asin(sqrt(myRandom(0))), M)
-        ray%direction = matmul(M,ndir)
-        
+        call RotationMatrix(dir1, ndir, asin(sqrt(myRandom(0))), M1)
+    
         ! second rotation with normal vector as rotation axis
-        call RotationMatrix(ndir, dir1, 2.0_dp*pi*myRandom(0), M)
-        ray%direction = matmul(M,ray%direction)
+        call RotationMatrix(ndir, dir1, 2.0_dp*pi*myRandom(0), M2)
+        
+        ! get final direction
+        ray%direction = matmul(M2,matmul(M1,ndir))
         
         ! just for checking (could be commented)
         open(unit=83, file=objFolder//trim(file_name)//"-initrayloc.res", action='write', position='append')  
@@ -181,53 +182,52 @@ module tracing
         real(dp), intent(in)                :: vertices(:,:)
         type(rayContainer), intent(inout)   :: ray
         character(len=*), intent(in)        :: resFname
-        real(dp) :: kappa, sigma, lAbs, lScat
+        real(dp) :: kappa, sigma, beta, omega, length
         integer, dimension(3) :: vertIDs 
-        real(dp), dimension(3) :: p1, p2, p3
+        real(dp), dimension(3) :: p1, p2, p3, endpoint
         logical :: test
         integer :: counter=0, io_error, write_error
+
+        ! properties of the medium
+        kappa = 10.0_dp
+        sigma = 0.75_dp
         
         ! calculate length of initial ray
-        kappa = 1.0_dp ! simple assumption so far
-        sigma = 1.0_dp ! simple assumption so far
+        beta = kappa + sigma        
+        omega = sigma/beta
         
-        lAbs = 1.0_dp/kappa*log(1/myRandom(0))
-        lScat = 1.0_dp/sigma*log(1/myRandom(0))
-        
-        open(unit=84, file=resFname, action='write', iostat=io_error, position='append')       
-        call check_io_error(io_error,"opening file for results 1",84)
-                
-        do
-            if (ray%length >= lAbs) then
-                write(*,*) "ray is absorbed"
-                tetraData(ray%tetraID)%nAbsorbed = tetraData(ray%tetraID)%nAbsorbed+1
-                write(84,'(1x,i8,1x,3(e14.6,1x),e14.6)',iostat=write_error) ray%tetraID, ray%point, myRandom(0)
-                call check_io_error(write_error,"writing results 1",84)
-                counter = counter + 1
-                exit
-            end if
+        ! trace ray until it leaves the enclosure or the energy is below a treshold  
+        do 
+	        length = 1.0_dp/beta*log(1/myRandom(0))
+	        endpoint = ray%point + length*ray%direction
+!             write(*,*) length
+!             write(*,*) endpoint
             
-            call FindNextTetra(vertices,tetraData,ray)
-        
-	        ! point on boundary surface
-            if (ray%faceID == -1) exit
-        
-            ! just some test
-            call return_facevertIds(ray%faceID, vertIDs)
-            call return_coords(tetraData(ray%tetraID), vertices, vertIDs, p1, p2, p3)
-            test = PointInside(p1,p2,p3,ray%point)
-            if (test .eqv. .false.) then
-                write(*,*) "POINT NOT ON TETRA FACE!!!"
-                stop
-            end if
+            ! trace path 
+            do while (ray%length < length)       
+		        call FindNextTetra(vertices,tetraData,ray)
+		        ! point on boundary surface
+	            if (ray%faceID == -1) then
+! 		            write(*,*) "ray is escaped"
+			        ! do boundary handling
+			        return
+			    end if
+            end do
             
-        end do
-        
-        close(unit=84, iostat=io_error)
-        call check_io_error(io_error,"opening file for results 1",84)
+            ! absorb power and scatter ray
+            if (ray%power > 0.0001_dp) then
+	            call RayAbsorbing(tetraData(ray%tetraID),ray%tetraID,endpoint,(1.0_dp-omega)*ray%power,resFname)
+! 	        	call RayScatter
+	            ray%power = ray%power*omega
+		        ray%length = 0.0_dp
+            else
+	            call RayAbsorbing(tetraData(ray%tetraID),ray%tetraID,ray%point,ray%power,resFname)
+                return
+            end if
+        end do 
         
     end subroutine TraceRay
-
+    
     ! find next tetra Element along ray direction
     subroutine FindNextTetra(vertices,tetraData,ray)
         
@@ -268,13 +268,29 @@ module tracing
         end do
         
         ! update ray container
-        ray%length = ray%length+norm(alpha*ray%direction)
+        ray%length = ray%length+alpha
         ray%point = ray%point + alpha*ray%direction
         ray%faceID = tetraData(ray%tetraID)%neighbors(newFace,2)  
         ray%tetraID = tetraData(ray%tetraID)%neighbors(newFace,1)     
     
     end subroutine
         
+    subroutine RayAbsorbing(tetra, id, point, power, resFname)
+    
+	    type(tetraElement), intent(inout)  :: tetra
+	    integer, intent(in)                :: id
+	    real(dp), dimension(3), intent(in) :: point
+	    real(dp), intent(in)               :: power
+	    character(len=*), intent(in)       :: resFname
+	    
+	    tetra%absorbed = tetra%absorbed + power
+	    
+	    open(unit=84, file=resFname, action='write', position='append')  
+	    write(84,'(1x,i8,1x,3(e14.6,1x),e14.6)') id, point, tetra%absorbed
+        close(unit=84)
+        
+    end subroutine RayAbsorbing
+    
     ! calculate refraction with Snell's law
     subroutine SnellsLaw(incident, n1, n2, nsf, reflect, refract)
         

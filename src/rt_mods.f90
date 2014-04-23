@@ -31,7 +31,7 @@ module rt_types
         !real(dp), dimension(4,4) :: shape_funcs ! shape functions
         
         integer                  :: domain=0      ! to which domain the tetra belongs
-        integer                  :: nAbsorbed=0   ! number of absorbed elements
+        real(dp)                 :: absorbed=0.0  ! absorbed power
     
     end type tetraElement
     
@@ -47,6 +47,8 @@ module rt_types
         integer                :: tetraID          ! current tetraeder indes
         integer                :: faceID           ! current face index
         real(dp)               :: length=0.0_dp    ! distance travelled
+        real(dp)               :: power = 1.0_dp   ! current power of ray
+        integer                :: wavelength       ! wavelength
     end type
     
 end module rt_types       

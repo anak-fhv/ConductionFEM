@@ -150,7 +150,7 @@ module pre_process_data
 
         do i = 1,nSurface
     
-            ! read number of elements with domain and name of domain
+            ! read number of elements within surface and name of aurface
             read(81,'(i8,1x,a)', iostat=read_error) nElem, surfName
         
             allocate(surfData(nElem,2), stat=alloc_status)
