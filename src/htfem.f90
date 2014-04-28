@@ -61,8 +61,9 @@ module htfem
 		call readboundaryconditions(meshVals,byCs,domKs,domRhos,	&
 		domCs,sfVals,tAmbient,trUser,gnUser)
 
-		trUser = .true.
+!		trUser = .true.
 
+		trUser = .false.
 		if(trUser) then
 			allocate(cpNo(nNodes))
 		end if
@@ -110,10 +111,11 @@ module htfem
 			call assemble_noderows(noElemPart,elNodes,elSt)
 			stNo(elNodes) = noElemPart
 
-			cpElemPart = cpNo(elNodes)
-			call assemblecapacitance(cpElemPart,elNodes,elCp)
-			cpNo(elNodes) = cpElemPart
-
+			if(trUser) then
+				cpElemPart = cpNo(elNodes)
+				call assemblecapacitance(cpElemPart,elNodes,elCp)
+				cpNo(elNodes) = cpElemPart
+			end if
 		end do
 
 		if(trUser) then
@@ -131,7 +133,10 @@ module htfem
 		end if
 
 		deallocate(stNo)
-		deallocate(cpNo)
+
+		if(trUser) then
+			deallocate(cpNo)
+		end if
 
 		write(*,*) "Entered solution step"
 
