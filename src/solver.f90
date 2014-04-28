@@ -140,13 +140,13 @@ module solver
 		rst = 1.d0
 		p = r
 		delta = dot_product(rst,r)
-		print *, "delta: ", delta
+		write(*,'(a,1x,f15.3)') "Starting delta: ", delta
 		delta0 = delta
 
 		do i=1,maxiter
 			if(mod(i,1000).eq.0) then
-				print *, "iteration: ", i
-				print *, "residual ratio: ", norm2(r)/cc
+				write(*,'(a,1x,i6)') 'Iteration number: ',i
+				write(*,'(a,1x,f15.3)') "Residual ratio: ", norm2(r)/cc
 			end if
 			call mkl_dcsrgemv("N",n,acsr,ia,ja,p,temp1)	! temp1=A*p
 			alpha = delta/dot_product(rst,temp1)
@@ -164,14 +164,14 @@ module solver
 				return
 			end if
 			if(i.eq.maxiter) then
-				print *, "Maximum iterations reached."
-				print *, "Convergence not achieved."
-				print *, "Norm of residual: ", norm2(r)
-				print *, "Convergence criterion: ", cc
+				write(*,'(a)') "Maximum iterations reached."
+				write(*,'(a)') "Convergence not achieved."
+				write(*,'(a,1x,f15.3)') "Norm of residual: ", norm2(r)
+				write(*,'(a,1x,f15.3)') "Convergence criterion: ", cc
 				if((norm2(r)/cc) .lt. 2.d0) then
-					print *, "The residual is within a small ",		&
+					write(*,'(a)') "The residual is within a small",&
 					"range of the convergence criterion."
-					print *, "Perhaps increasing iteration ",		&
+					write(*,'(a)') "Perhaps increasing iteration ",	&
 					"count may help."
 				end if
 			end if

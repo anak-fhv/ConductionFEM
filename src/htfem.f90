@@ -35,17 +35,18 @@ module htfem
 		type(noderow) :: noElemPart(4),cpElemPart(4)
 		type(noderow),allocatable :: stNo(:),cpNo(:)
 
+		write(*,'(a)') "Now reading mesh file..."
+
 		call getmeshdata(meshVals,noVerts,connTab,doElems,			&
 		sfFcname,sfElems)
 
-		write(*,'(a)') "Meshdetails received"
+		write(*,'(a)') "Meshdetails received."
 
 		nNodes = meshVals(1)
 		nElems = meshVals(2)
 		nDoms  = meshVals(6)
 		nSurfs = meshVals(7)
 
-		write(*,*) "System size: ", nNodes
 		allocate(sySrc(nNodes))
 		allocate(syTvals(nNodes))
 		allocate(stNo(nNodes))
@@ -67,6 +68,11 @@ module htfem
 		if(trUser) then
 			allocate(cpNo(nNodes))
 		end if
+
+		call summarisesystem(meshVals,byCs,sfVals,sfFcname,trUser,	&
+		gnUser)
+
+		write(*,'(a)') "Beginning assembly..."
 
 		do i=1,nElems
 
@@ -118,6 +124,8 @@ module htfem
 			end if
 		end do
 
+		write(*,'(a)') "Assembly completed."
+
 		if(trUser) then
 ! Empty call created for later implementation
 !			call readinitialvalues(syTvals)
@@ -138,7 +146,8 @@ module htfem
 			deallocate(cpNo)
 		end if
 
-		write(*,*) "Entered solution step"
+		write(*,*)""
+		write(*,'(a)') "Entered solution step..."
 
 		if(trUser) then
 			useRK = .true.
@@ -146,6 +155,8 @@ module htfem
 			cpCols,sySrc,useRK,syTvals,noVerts)
 		else
 			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,revals,iter)
+
+			write(*,'(a)') "Solution completed."
 			write(*,'(a,i5,2x,a)') "This program took: ",iter,			&
 			"iterations to converge."
 
@@ -159,16 +170,16 @@ module htfem
 			write(resfilenum,*)
 
 			call getflowrates(noVerts,connTab,doElems,domKs,sfElems,	&
-			reVals,(/1,2/),(/3,4/),3,qBLow,qBHigh)
+			reVals,(/3,4/),(/11,12/),3,qBLow,qBHigh)
 
 			if(nDoms .eq. 2) then
-				write(resfilenum,'(a,f9.4)') "Sample porosity:",		&
+				write(resfilenum,*) "Sample porosity:",		&
 				vF(1)/(sum(vF))
 			end if
 
 			write(resfilenum,*) "Fluxes:"
-			write(resfilenum,'(a,f9.4)') "Boundary low:", qBLow
-			write(resfilenum,'(a,f9.4)') "Boundary high:", qBHigh
+			write(resfilenum,*) "Boundary low:", qBLow
+			write(resfilenum,*) "Boundary high:", qBHigh
 
 			close(resfilenum)
 		end if
@@ -195,6 +206,57 @@ module htfem
 		surfacenames)
         call closemeshfile(unitnumber)
     end subroutine getmeshdata
+
+	subroutine summarisesystem(meshVals,byCs,sfVals,sfFcname,		&
+	trUser,gnUser)
+		integer :: i,meshVals(:),byCs(:)
+		real(8),parameter :: small=1e-8
+		real(8) :: sfVals(:)
+		logical :: trUser,gnUser
+		character(*) :: sfFcname(:)
+
+		write(*,*)""
+		write(*,'(a)') "Short system summary: "
+		write(*,'(4x,a,1x,i4)') "Domains: ", meshVals(6)
+		write(*,'(4x,a,1x,i8)') "Number of nodes: ", meshVals(1)
+		write(*,'(4x,a,1x,i8)') "Number of elements: ", meshVals(2)
+		write(*,*)""
+		write(*,'(4x,a)') "System boundaries, not including domain interfaces: "
+		write(*,*)""
+
+		do i=1,meshVals(7)
+			
+			if(byCs(i) == 1) then
+				write(*,'(4x,a,1x,a)') trim(sfFcname(i)), ": Temperature"
+			elseif(byCs(i) == 2) then
+				if(sfVals(i) < small) then
+					write(*,'(4x,a,1x,a)') trim(sfFcname(i)), ": Adiabatic"
+				else
+					write(*,'(4x,a,1x,a)') trim(sfFcname(i)), ": Flux"
+				end if
+			elseif(byCs(i) == 3) then
+				write(*,'(4x,a,1x,a)') trim(sfFcname(i)), ": Convective"
+			elseif(byCs(i) == 4) then
+				continue
+			else
+				write(*,'(4x,a)') "For ", trim(sfFcname(i))
+				write(*,'(4x,a)') "Unrecognised boundary condition."
+				write(*,'(4x,a)') "Update datafile.dat inputs."
+				write(*,'(4x,a)') "Now quitting program execution..."
+				call exit(1)
+			end if
+		end do
+
+		if(gnUser) then
+			write(*,'(4x,a)') "User specified volume generation exists."
+		end if
+
+		if(trUser) then
+			write(*,'(4x,a)') "Transient solution requested."
+		end if
+
+		write(*,*)""
+	end subroutine summarisesystem
 
 	subroutine addtoglobaltemperature(Tvals,elnodes,btemp)
 		real(8),dimension(:),intent(inout) :: Tvals
