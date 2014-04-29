@@ -84,8 +84,28 @@ module rt_funcs
         bc(2) = dot_product(na,ny)/dpna
         bc(3) = dot_product(na,nz)/dpna
         PointInside = (all(bc > 0e0_dp) .and. (abs(sum(bc) - 1) <= 1e-14_dp))
-    
+        
+        if (PointInside .eqv. .false.) then
+	        write(*,*) bc
+	        write(*,*) abs(sum(bc) - 1)
+        end if
+        
     end function
     
-   
+	! return surface normal and reference point (one of thee vertices)
+	subroutine return_surfNormal(tetra, face, vertices, normal, point)
+	
+		type(tetraElement), intent(in)      :: tetra
+		integer, intent(in)                 :: face
+		real(dp), intent(in)                :: vertices(:,:)
+		real(dp), dimension(3), intent(out) :: normal, point
+		real(dp), dimension(3) :: p2, p3
+		integer, dimension(3) :: vertIDs
+		
+		call return_facevertIds(face,vertIDs)  
+        call return_coords(tetra, vertices, vertIDs, point, p2, p3)
+        normal = cross(p2-point,p3-point)
+	
+	end subroutine return_surfNormal
+	
 end module rt_funcs

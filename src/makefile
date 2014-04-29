@@ -2,14 +2,14 @@
 
 # Makefile variables -g 
 FC      = ifort
-FCFLAGS = -g  -parallel -mkl -traceback -CB
+# FCFLAGS = -g  -parallel -mkl -traceback -CB
 # flag -g increase runtime in raytracing pre-processing
 # by a factor of almost 8
-# FCFLAGS	 = -parallel -mkl -traceback -CB
+FCFLAGS	 = -parallel -mkl -traceback -CB
 VPATH	:= src
 OBJDIR	:= ../obj
 LIBPATH := /opt/intel/mkl/lib/intel64
-LIBS := 	$(LIBPATH)/libmkl_intel_lp64.a \
+LIBS    := $(LIBPATH)/libmkl_intel_lp64.a \
   			$(LIBPATH)/libmkl_core.a  \
   			$(LIBPATH)/libmkl_sequential.a \
   			$(LIBPATH)/libmkl_core.a  \

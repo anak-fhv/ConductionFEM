@@ -102,7 +102,7 @@ module helper_functions
     
     contains
     
-        ! checks for input-output errors
+    ! checks for input-output errors
     subroutine check_io_error(stat, message, unitnumber)
     
         integer, intent(in)                :: stat, unitnumber

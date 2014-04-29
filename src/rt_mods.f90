@@ -26,7 +26,7 @@ module rt_types
         ! The 1st column contains the ID of the neighboring element or surface. In case of
         ! a surface the ID = ID_of_surface + Number_of_Tetraelements.
         ! The 2nd column contains the face of the neighboring element which is identical to
-        ! the face given by the row index. In case a surface is the nieghbor the entry is -1.
+        ! the face given by the row index. In case a surface is the neighbor the entry is -1.
         
         !real(dp), dimension(4,4) :: shape_funcs ! shape functions
         
