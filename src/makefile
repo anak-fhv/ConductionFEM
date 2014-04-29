@@ -1,12 +1,15 @@
 # This makefile uses intel fortran compiler for linux
 
-# Makefile variables
-FC		 = ifort
-FCFLAGS	 = -g -parallel -mkl -traceback -CB
+# Makefile variables -g 
+FC      = ifort
+# FCFLAGS = -g  -parallel -mkl -traceback -CB
+# flag -g increase runtime in raytracing pre-processing
+# by a factor of almost 8
+FCFLAGS	 = -parallel -mkl -traceback -CB
 VPATH	:= src
 OBJDIR	:= ../obj
 LIBPATH := /opt/intel/mkl/lib/intel64
-LIBS := 	$(LIBPATH)/libmkl_intel_lp64.a \
+LIBS    := $(LIBPATH)/libmkl_intel_lp64.a \
   			$(LIBPATH)/libmkl_core.a  \
   			$(LIBPATH)/libmkl_sequential.a \
   			$(LIBPATH)/libmkl_core.a  \
@@ -21,6 +24,7 @@ OBJECTS	:= $(OBJDIR)/test.o $(OBJDIR)/htfem.o \
 		   $(OBJDIR)/assembly.o $(OBJDIR)/boundary.o \
 		   $(OBJDIR)/solver.o $(OBJDIR)/postproc.o \
 		   $(OBJDIR)/transient.o
+		   
 
 # Make all target
 all: $(OBJECTS)
@@ -62,6 +66,36 @@ $(OBJDIR)/readmesh.o: | $(OBJDIR)
 
 $(OBJDIR)/solver.o: | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c solver.f90 -o $(OBJDIR)/solver.o
+
+# Raytracing objects
+OBJECTS_rt := $(OBJDIR)/raytracing.o  $(OBJDIR)/rt_mods.o \
+	      $(OBJDIR)/rt_math.o $(OBJDIR)/rt_preprocess.o \
+	      $(OBJDIR)/rt_tracing.o $(OBJDIR)/rt_elements.o	   
+
+# make only raytracing
+rt: $(OBJECTS_rt) 
+	$(FC) $(FCFLAGS) -o $(OBJDIR)/rt.out $(OBJECTS_rt) $(LIBS)
+
+$(OBJDIR)/raytracing.o: $(OBJDIR)/rt_mods.o $(OBJDIR)/rt_math.o \
+			$(OBJDIR)/rt_preprocess.o $(OBJDIR)/rt_tracing.o| $(OBJDIR) \
+			$(OBJDIR)/rt_elements.o
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -c raytracing.f90 -o $(OBJDIR)/raytracing.o
+
+$(OBJDIR)/rt_mods.o: | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_mods.f90 -o $(OBJDIR)/rt_mods.o	
+	
+$(OBJDIR)/rt_math.o: $(OBJDIR)/rt_mods.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_math.f90 -o $(OBJDIR)/rt_math.o
+
+$(OBJDIR)/rt_elements.o: $(OBJDIR)/rt_math.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_elements.f90 -o $(OBJDIR)/rt_elements.o
+			
+$(OBJDIR)/rt_preprocess.o: $(OBJDIR)/rt_elements.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_preprocess.f90 -o $(OBJDIR)/rt_preprocess.o
+	
+$(OBJDIR)/rt_tracing.o: $(OBJDIR)/rt_elements.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_tracing.f90 -o $(OBJDIR)/rt_tracing.o
+
 
 # Cleaning everything
 clean:

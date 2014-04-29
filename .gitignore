@@ -1,4 +1,5 @@
 /obj/*
+/data/*
 **/*.msh
 **/*.out
 **/*.dat
@@ -8,3 +9,5 @@
 **/*.png
 **/*.bmp
 **/*.tiff
+**/*.pdf
+**/*.backup

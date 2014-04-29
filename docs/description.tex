@@ -1,0 +1,100 @@
+\documentclass[a4paper,10pt]{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{hyperref}
+\hypersetup{breaklinks = true,
+            pdftitle = {Description Monte-Carlo Algorithm for Raytracing},
+            pdfauthor = {Steffen Finck},
+            colorlinks = false,
+            pdfstartpage = 1,
+            pdfborder=0 0 0
+}
+\begin{document}
+
+\section{Preprocessing}
+ ....
+ 
+\section{Raytracing}
+
+\subsection{Preliminary}
+For forward Monte Carlo typically 2 methods are available, Collision-Based and Pathlength.
+The former is simpler to implement, especially when considering scattering, the latter is more efficient (i.e. less rays are required).
+So far Collision-Based will be implemented, however, Pathlength should be considered at a later stage.
+The initial code should allow for analysis of LED problem and work with porous media analysis. 
+The code should be modular, such that spectral-dependencies and various models for absorption and scattering can be easily implemented and used within the framework.
+In the following each of the steps and its underlying equations, mostly the required cumulative distribution functions (CDF) necessary for the random number selection, are detailed.
+
+\textbf{Assumptions for the mesh}: tetraeder elements
+
+\subsection{Creating a Ray}
+\textbf{Modul}: \textit{CreateRay} in \textit{rt$\_$tracing.f90} 
+\begin{enumerate}
+ \item \textbf{select emission surface} \\
+       In case several emission surfaces exist, one has to choose one for each ray. The selection will be based on a roulette-wheel selection dependent on the total area of the emission surface. In case the surfaces have different properties (e.g. temperature) the total black-body emissive power has to be used.\\
+       \textbf{status}: too be implemented
+
+ \item \textbf{select tetraeder for emission} \\
+       The emission surface element contains the cumulative sum of the whole area for the emission surface normalized with the total area of the emission surface. Thus, a tetraeder (and hence the respective face on the surface) is chosen by a roulette wheel selection. This selection assumes that all elements have the same properties. If this is not the case, the selection has to consider the emissive power of each face.
+       \textbf{status}: implemented for constant properties of the whole emission surface
+ 
+ \item \textbf{select point within face for emission} \\
+       Since all face are triangles the point of emission is chosen by the outcome of 2 uniformly distributed random numbers. At first, the longest side of the triangle is determined. This selects simultaneously a reference point and two directional vectors within the face. The first random number is the value of the CDF for the triangle distribution. This value is used to find a point on the longest side. The 2nd random number is the value for the CDF of a uniform distribution. The uniform distribution has the range $0$ to the height of the triangle at the first point selected. The corresponding direction is perpendicular to the direction of the longest side.
+       \textbf{status}: implemented, maybe replaced by an approach relying on the shape functions
+       
+ \item \textbf{select direction of emission} \\
+       The direction of the emitted ray is depends on 2 angles, $\Theta$ and $\Psi$. The general equations are given in \cite[p.~653f.]{Mod03}. 
+       \begin{align}
+        R_\Psi & = \dfrac{1}{\pi} \int_0^\Psi \int_0^{\pi/2} \dfrac{\epsilon^\prime_\lambda}{\epsilon_\lambda} \cos \Theta \sin \Theta \mathrm{d} \Theta \mathrm{d} \Psi \\
+        R_\Theta & = \dfrac{\int_0^\Theta \epsilon^\prime_\lambda \cos \Theta \sin \Theta \mathrm{d} \Theta}{\int_0^{\pi/2} \epsilon^\prime_\lambda \cos \Theta \sin \Theta \mathrm{d} \Theta} 
+       \end{align}
+       In case the surface is isotropic, 
+       \begin{equation}
+        \epsilon_\lambda = 2 \int_0^{\pi/2} \epsilon^\prime_\lambda \cos \Theta \sin \Theta \mathrm{d}\Theta
+       \end{equation}
+       yields for a diffuse emitter
+       \begin{align}
+        R_\Psi & = \dfrac{1}{2\pi} \int_0^\Psi \mathrm{d} \Psi = \dfrac{\Psi}{2 \pi} \\
+        R_\Theta & = \dfrac{\int_0^\Theta \cos \Theta \sin \Theta \mathrm{d} \Theta}{\int_0^{\pi/2} \cos \Theta \sin \Theta \mathrm{d} \Theta} = \dfrac{2}{1} \dfrac{\sin^2 \Theta}{2} = \sin^2 \Theta
+       \end{align}
+       Choosing the values $R_\Psi$ and $R_\Theta$ zuniform randomly, allows to determine the corresponding angles $\Psi$ and $\Theta$. Note, the range of the polar angle $\Theta$ is $0 \le \Theta \le \pi/2$, meaning only direction inside the tetraeder from the face are allowed. Starting with normal vector of the emission face (see previous point), first the direction of the normal vector is verified to point inward the tetraeder. Then the normal vector (normalized!) is rotated with $\Theta$ about a normalized vector within the face as rotation axis. Next, the resulting vector is rotated with $\Psi$ with the normal vector as rotation axis.
+       \textbf{status}: implementation for isotropic surface and diffuse emission
+
+ \item \textbf{select wavelength of emission} \\
+       \textbf{status}: neither implemented nor thought about it
+ \item \textbf{select power of emission} \\
+       \textbf{status}: neither implemented nor thought about it
+\end{enumerate}
+
+\subsection{Tracing Rays}
+One a ray is emitted the mean free path length is calculated.The mean free path length depends on the extinction coefficient,
+\begin{equation}
+ \beta = \kappa + \sigma ,
+\end{equation}
+where $\kappa$ is absorption coefficient and $\sigma$ the scattering coefficient. The respective change in intensity is
+\begin{equation}
+ \mathrm{d} I = -\beta I \mathrm{d}s,
+\end{equation}
+with $s$ as path length. If both, absorption and scattering, are possible, the mean free path length determines the length the rays travels until the first interaction within the participating medium.
+The integral over the path for above equation results in
+\begin{equation}
+ \dfrac{I(s)}{I(0)} = \exp\left(-\int_0^s \beta \mathrm{d}s\right) .
+\end{equation}
+If the ratio is $1$, i.e. $I(s) = I(0)$, no absorption occured and all radiative energy is transfered over the distance $s$. On the other hand, if the ratio is $0$ all energy was absorbed. Since the ratio will be in the interval $[0,1]$, it can be used as the cdf for the random number. This yields
+\begin{equation}
+ R_\beta = \exp\left(-\int_0^s \beta \mathrm{d}s\right)
+\end{equation}
+and in case of constant $\beta$ 
+\begin{equation}
+ s = \dfrac{1}{-\beta} \ln R_\beta = \dfrac{1}{\beta} \ln \dfrac{1}{R_\beta}
+\end{equation}
+The ray is traced until the distance $s$ is reached within an element. At this point one has to see whether the ray will be scattered or absorped. The simplest way ist to compare a random number with the scattering albedo 
+\begin{equation}
+ \omega = \dfrac{\sigma}{\beta} = \dfrac{\sigma}{\kappa + \sigma} .
+\end{equation}
+If the random number is larger than $\omega$ the ray is absorped, else it will be scattered. An alternative way, see \cite[p. 365]{FH98}, is to use absortpion supression. In this case the power of the ray is multiplied with the scattering albedo and the ray continues. In this case the fraction $(1-\omega)$ is absorped and the fraction $\omega$ is scattered. Absorption supression could yield a better computational performance.  
+
+
+\bibliographystyle{apalike}
+\bibliography{thermo}
+
+\end{document}
