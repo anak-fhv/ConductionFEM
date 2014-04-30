@@ -21,7 +21,7 @@ module tracing
         integer, intent(in)                    :: nrays
         type(rayContainer)                     :: ray
         real(dp) :: t1, t2, dummy
-        integer :: io_error, write_error, k, counter = 0
+        integer :: io_error, write_error, k
         character(len=100) :: resFname, leaveFname
         
         ! initialize random generator
@@ -32,7 +32,7 @@ module tracing
         resFname = objFolder//trim(file_name)//".res"
         open(unit=81, file=resFname, action='write', status='replace', iostat=io_error)       
         call check_io_error(io_error,"creating file for results 1",81)
-        write(81,'(1x,a8,4(1x,a14))',iostat=write_error) "tetraID", "x", "y", "z", "absorbed"
+        write(81,'(a8,4(1x,a14))',iostat=write_error) "tetraID", "x", "y", "z", "absorbed"
         call check_io_error(write_error,"writing header results 1",81)
         close(unit=81, iostat=io_error)
         call check_io_error(io_error,"closing file for results 1",81)
@@ -41,7 +41,7 @@ module tracing
         leaveFname = objFolder//trim(file_name)//"-leaving.res"
         open(unit=83, file=leaveFname, action='write', status='replace', iostat=io_error)       
         call check_io_error(io_error,"creating file for results 2",83)
-        write(83,'(1x,a8,4(1x,a14))',iostat=write_error) "loc x", "loc y", "loc z", "dir x", "dir y", "dir z", "power" 
+        write(83,'(7(1x,a14))',iostat=write_error) "loc x", "loc y", "loc z", "dir x", "dir y", "dir z", "power" 
         call check_io_error(write_error,"writing header results 2",83)
         close(unit=83, iostat=io_error)
         call check_io_error(io_error,"closing file for results 2",83)
@@ -49,7 +49,7 @@ module tracing
         ! additional debugging files
         open(unit=82, file=objFolder//trim(file_name)//"-initrayloc.res", action='write', status='replace', iostat=io_error)       
         call check_io_error(io_error,"creating debug-file 1",82)
-        write(82,'(6(a14))',iostat=write_error) "x", "y", "z", "dx", "dy","dz"
+        write(82,'(6(1x,a14))',iostat=write_error) "x", "y", "z", "dx", "dy","dz"
         call check_io_error(write_error,"writing debug-file 1 header",82)
         close(unit=82, iostat=io_error)
         call check_io_error(io_error,"closing debug-file 1",82)
@@ -60,12 +60,10 @@ module tracing
 	    do k = 1,nrays
 	        call CreateRay(tetraData, vertices, ems(1), ray, file_name)
 	        call TraceRay(tetraData, vertices, ray, resFname, leaveFname)
-	        if (ray%faceID == -1) counter = counter+1
 	    end do
 	    call cpu_time(t2)
     
 	    write(*,*) "run time raytracing: ", t2-t1
-	    write(*,*) "precentage of escaped rays:", real(counter)/real(nrays)
     
     end subroutine start_tracing
     
@@ -184,7 +182,7 @@ module tracing
         
         ! just for checking (could be commented)
         open(unit=83, file=objFolder//trim(file_name)//"-initrayloc.res", action='write', position='append')  
-        write(83,'(6e14.6)') ray%point, ray%direction
+        write(83,'(6(1x,e14.6))') ray%point, ray%direction
         close(unit=83)         
         
     end subroutine CreateRay
@@ -197,7 +195,7 @@ module tracing
         type(rayContainer), intent(inout)   :: ray
         character(len=*), intent(in)        :: resFname, leaveFname
         real(dp) :: kappa, sigma, beta, omega, length
-        real(dp), dimension(3) :: endpoint
+        integer :: flag
 
         ! properties of the medium
         kappa = 10.0_dp
@@ -207,38 +205,40 @@ module tracing
         beta = kappa + sigma        
         omega = sigma/beta
         
-        ! trace ray until it leaves the enclosure or the energy is below a treshold  
-        do 
+        ! trace ray until the energy is below a treshold  
+        do while (ray%power > 0.00001_dp)
+        
 	        length = 1.0_dp/beta*log(1/myRandom(0))
-	        endpoint = ray%point + length*ray%direction
+	        flag = 1
             
             ! trace path 
             do while (ray%length < length)       
 		        call FindNextTetra(vertices,tetraData,ray)
-		        
 		        ! point on boundary surface
-	            if (ray%faceID == -1) then
-! 		            write(*,*) "ray is escaped"
-			        ! do boundary handling
-			        return
+	            if (ray%faceID < 0) then
+	                call BoundaryHandling(ray, tetraData(ray%tetraID), vertices, leaveFname)
+                    flag = 0
+                    exit
 			    end if
-			    
             end do
             
-!             write(*,*) "rp-end:", ray%point
-!             write(*,*)
+            ! ray properties are updated and no scattering or absorption happens
+!             write(*,*) flag
+            if (flag < 1) cycle
             
-            ! absorb power and scatter ray
-            if (ray%power > 0.0001_dp) then
-	            call RayAbsorbing(tetraData(ray%tetraID),ray%tetraID,endpoint,(1.0_dp-omega)*ray%power,resFname)
-	        	call RayScatter(ray, tetraData(ray%tetraID), vertices)
-	            ray%power = ray%power*omega
-		        ray%length = 0.0_dp
-            else
-	            call RayAbsorbing(tetraData(ray%tetraID),ray%tetraID,ray%point,ray%power,resFname)
-                return
-            end if
+            ! scattering and absorption
+            call RayAbsorbing(tetraData(ray%tetraID),ray%tetraID,ray%point,(1.0_dp-omega)*ray%power,resFname)
+	        call RayScatter(ray, tetraData(ray%tetraID), vertices)
+	            
+	        ! update ray properties    
+	        ray%faceID = get_facenumber(ray%faceID, tetraData(ray%tetraID))
+	        ray%power = ray%power*omega
+		    ray%length = 0.0_dp
+            
         end do 
+        
+        ! in case a small amount of power remains
+        if (ray%power > 0) call RayAbsorbing(tetraData(ray%tetraID),ray%tetraID,ray%point,ray%power,resFname)
         
     end subroutine TraceRay
     
@@ -254,12 +254,13 @@ module tracing
         real(dp), dimension(3) :: p1, p2, p3
         integer, dimension(3)  :: vertIDs
         
-!         write(*,*) "rp:", ray%point
-!         write(*,*) "rd:", ray%direction
-!         write(*,*) "rt:", ray%tetraID
+!         write(*,*) "rp-fnt:", ray%point
+!         write(*,*) "rd-fnt:", ray%direction
+! !         write(*,*) "rt:", ray%tetraID
 !         write(*,*) "rf:", ray%faceID        
 !         ! test whether point is indeed in triangle
-!         call return_facevertIds(ray%faceID,vertIDs)  
+!         newFace = get_facenumber(ray%faceID, tetraData(ray%tetraID))
+!         call return_facevertIds(newFace,vertIDs)  
 !         call return_coords(tetraData(ray%tetraID), vertices, vertIDs, p1, p2, p3)
 !         if (PointInside(p1,p2,p3,ray%point) .eqv. .false.) then
 !             write(*,*) "Waypoint not in face!"
@@ -297,17 +298,21 @@ module tracing
         ! update ray container
         ray%length = ray%length + alpha
         ray%point = ray%point + alpha*ray%direction
+        ray%faceID = tetraData(ray%tetraID)%neighbors(newFace,2)  
+        ray%tetraID = tetraData(ray%tetraID)%neighbors(newFace,1)
         
         ! test whether point is indeed in triangle
+        newFace = get_facenumber(ray%faceID, tetraData(ray%tetraID))
         call return_facevertIds(newFace,vertIDs)  
         call return_coords(tetraData(ray%tetraID), vertices, vertIDs, p1, p2, p3)
         if (PointInside(p1,p2,p3,ray%point) .eqv. .false.) then
             write(*,*) "Waypoint not in face!"
+!             write(*,*) "rp:", ray%point
+!             write(*,*) "rt:", ray%tetraID
+!             write(*,*) "rf:", ray%faceID
+!             write(*,*) "rf2:", newFace
             stop
         end if
-        
-        ray%faceID = tetraData(ray%tetraID)%neighbors(newFace,2)  
-        ray%tetraID = tetraData(ray%tetraID)%neighbors(newFace,1)
         
 !         write(*,*) "rp-update:", ray%point
 !         write(*,*) "rl-update:", ray%length
@@ -315,7 +320,7 @@ module tracing
 !         write(*,*) "rf-update:", ray%faceID 
 !         write(*,*)
     
-    end subroutine
+    end subroutine FindNextTetra
         
     ! write out location and intensity of ray absorbed
     subroutine RayAbsorbing(tetra, id, point, power, resFname)
@@ -381,34 +386,65 @@ module tracing
         real(dp), dimension(3), intent(out)   :: refract, reflect ! refraction and reflection direction
         real(dp) :: cosAngle, ratio
         
+        ! cosine of angle between surface normal and incident direction
+        ! must be positive (else normal is pointing outwards and must be used as negative)
         cosAngle = -dot_product(incident,nsf)
-        if (cosAngle < 0) then
+        if (cosAngle < 0.0_dp) then
             cosAngle = -cosAngle
             nsf = -nsf
         end if
         
+        ! direction of reflected ray
         reflect = incident + 2*cosAngle*nsf
         
+        ! ratio of refractive indices
         ratio = n1/n2
-        refract = ratio*incident + ratio*cosAngle*nsf - sqrt(1 - ratio**2*(1-cosAngle**2))*nsf
-   end subroutine SnellsLaw
+        
+        ! check whether critical angle is exceeded 
+        if (ratio*sin(acos(cosAngle)) > 1) then
+	        refract = [0.0_dp,0.0_dp,0.0_dp]
+	    else
+	        refract = ratio*incident + (ratio*cosAngle - sqrt(1.0_dp - ratio**2*(1.0_dp-cosAngle**2)))*nsf
+        end if
+        
+    end subroutine SnellsLaw
     
     ! handle boundary
+    ! parameter trans specifies transmissivity and reflectivity (1-trans)
     subroutine BoundaryHandling(ray, tetra, vertices, leaveFname)
     
-	    type(rayContainer), intent(in) :: ray
-	    type(tetraElement), intent(in) :: tetra
-	    real(dp), intent(in)           :: vertices(:,:)
-	    character(len=*), intent(in)   :: leaveFname
-	    real(dp), dimension(3) :: nsf, point, reflect, refract
+	    type(rayContainer), intent(inout) :: ray
+	    type(tetraElement), intent(in)    :: tetra
+	    real(dp), intent(in)              :: vertices(:,:)
+	    character(len=*), intent(in)      :: leaveFname
+	    real(dp), dimension(3) :: nsf, point, reflect, refract 
 	    
+	    ! get surface normal of current face
 	    call return_surfNormal(tetra, ray%faceID, vertices, nsf, point)
+	    ! reflection and refraction  
 	    call SnellsLaw(ray%direction, 1.9_dp, 1.5_dp, nsf, reflect, refract)
-	    call SnellsLaw(refract, 1.9_dp, 1.5_dp, nsf, reflect, refract)
+! 	    call SnellsLaw(refract, 1.5_dp, 1.0_dp, nsf, reflect, refract)
 	    
-	    open(unit=85, file=leaveFname, action='write', position='append')  
-	    write(85,'(1x,i8,1x,3(e14.6,1x),e14.6)') ray%point, refract, ray%power
-        close(unit=85)
+	    ray%direction = reflect
+	    if (count(refract == 0.0_dp) < 3) then		    
+		    
+		    ! write out data 
+		    open(unit=85, file=leaveFname, action='write', position='append')  
+		    write(85,'(7(1x,e14.6))') ray%point, refract, ray%power*trans
+	        close(unit=85)
+		    
+		    ! update ray properties
+	        ray%power = ray%power*(1-trans)
+	        
+	    end if
 	    
+	    ! since current face id is negative, reset it
+        ray%faceID = get_facenumber(ray%faceID, tetra)
+        ray%length = 0.0_dp
+        
+!         write(*,*) "rp", ray%point
+!         write(*,*) "rd", ray%direction
+	           
 	end subroutine BoundaryHandling
+	
 end module tracing

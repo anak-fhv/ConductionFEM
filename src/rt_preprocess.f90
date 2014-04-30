@@ -140,8 +140,7 @@ module pre_process_data
 !             write(*,'(1x,A43,i7,1x,i2)') "array for elements in domain has now shape ", shape(elemDomain) 
 !             write(*,*)
        
-        end do
-        
+        end do     
         
         ! read surface information
         allocate(ems(size(emSurfNames)), stat=alloc_status)
@@ -167,10 +166,11 @@ module pre_process_data
             end if 
        
             ! assign data to tetraElement-type
-            ! surface index starts at number of (tetra elements + 1)
+            ! if a face is on the surface, the tetraeder elements reference itself and the
+            ! neighboring face is a negitve numver with the index of the surface
             do n = 1, nElem
-                tetraData(surfData(n,1))%neighbors(surfData(n,2),1) = i+nTetra 
-                tetraData(surfData(n,1))%neighbors(surfData(n,2),2) = -1
+                tetraData(surfData(n,1))%neighbors(surfData(n,2),1) = surfData(n,1)
+                tetraData(surfData(n,1))%neighbors(surfData(n,2),2) = -i
             end do
             
             ! if the surface is a emission surface
@@ -205,8 +205,11 @@ module pre_process_data
         ! check for double entries (could be commented)
         do i = 1,nTetra
             do n = 1,4
-                if ( (tetraData(i)%neighbors(n,1) > nTetra) .or. (tetraData(i)%neighbors(n,1) == 0))  cycle
-                j= count(tetraData(i)%neighbors(n,1) == tetraData(i)%neighbors(:,1))  
+                if (tetraData(i)%neighbors(n,1) == i) then 
+	                j = count(tetraData(i)%neighbors(n,2) == tetraData(i)%neighbors(:,2))
+	            else      
+	                j= count(tetraData(i)%neighbors(n,1) == tetraData(i)%neighbors(:,1))
+	            end if  
                 if (j > 1) then
                     write(*,*) "double entry"
                     write(*,*) tetraData(i)%neighbors(:,1)
