@@ -135,6 +135,7 @@ module solver
 		allocate(temp2(n))
 
 		x = 0.d0
+
 		call mkl_dcsrgemv("N",n,acsr,ia,ja,x,temp1)
 		r = b-temp1
 		rst = 1.d0
