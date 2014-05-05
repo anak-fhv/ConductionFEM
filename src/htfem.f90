@@ -27,7 +27,7 @@ module htfem
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
 							   vF(:),domRhos(:),domCs(:),syCp(:),	&
-							   dumtemp(:)
+							   initGuess(:)
 		character(*),parameter :: objdir = "../obj/",				&
 								  resfile = objdir//"results.out",	&
 								  outfile = objdir//"outputs.out"
@@ -163,11 +163,10 @@ module htfem
 			call transientsolve(sySt,stRowPtr,stCols,syCp,cpRowPtr,		&
 			cpCols,sySrc,useRK,syTvals,noVerts)
 		else
-			allocate(vsortind(nNodes))
-			allocate(dumtemp(nNodes))
-			dumtemp = noVerts(:,3)
 			
-			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,revals,iter)
+			call getInitialGuess(syTvals,noVerts,initGuess)
+			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,initGuess,	&
+			revals,iter)
 
 			write(*,'(a)') "Solution completed."
 			write(*,'(a,i5,2x,a)') "This program took: ",iter,			&
@@ -186,8 +185,7 @@ module htfem
 			reVals,(/1/),(/5/),3,qBLow,qBHigh)
 
 			if(nDoms .eq. 2) then
-				write(resfilenum,*) "Sample porosity:",		&
-				vF(1)/(sum(vF))
+				write(resfilenum,*) "Sample porosity:",vF(1)/(sum(vF))
 			end if
 
 			write(resfilenum,*) "Fluxes:"
@@ -347,10 +345,10 @@ module htfem
 		vMax = maxval(tVerts)
 		vMin = minVal(tVerts)
 		Tmax = maxval(syTvals)
-		Tmin = minval(syTvals,syTvals.gt.0.d0)
+		Tmin = minval(syTvals,MASK=syTvals.ne.0.d0)
 
 		do i=1,n
-			initGuess(i) = (tVerts(i)-vMin)*(Tmax-Tmin)/(vMax-vMin)
+			initGuess(i)=Tmax-(tVerts(i)-vMin)*(Tmax-Tmin)/(vMax-vMin)
 		end do
 
 	end subroutine getInitialGuess

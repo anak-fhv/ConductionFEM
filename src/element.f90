@@ -60,10 +60,6 @@ module element
 
 		n = size(elbins,1)
 		binnum = ceiling(real(n)*((elcent(dnum)-dlow)/(dhigh-dlow)))
-		print *, "dlow: ", dlow
-		print *, "dhigh: ", dhigh
-		print *, "elcent(3); ", elcent(3)
-		print *, "binnum: ", binnum
 
 		if(.not.(allocated(elbins(binnum)%bin))) then
 			allocate(elbins(binnum)%bin(1))
