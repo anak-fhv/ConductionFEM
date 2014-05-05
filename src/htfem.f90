@@ -69,8 +69,6 @@ module htfem
 		call readboundaryconditions(meshVals,byCs,domKs,domRhos,	&
 		domCs,sfVals,tAmbient,trUser,gnUser)
 
-!		trUser = .true.
-
 		trUser = .false.
 		if(trUser) then
 			allocate(cpNo(nNodes))
@@ -93,7 +91,7 @@ module htfem
 			call shapefunctions(elVerts,elVol,elSpfns)
 			call elementstiffness(elSpfns,elVol,elK,elSt)
 
-			call binelement(elbins,bindim,dlow,dhigh,i,elVerts)
+!			call binelement(elbins,bindim,dlow,dhigh,i,elVerts)
 
 			if(trUser) then
 				call getcapacitance(elDom,elVol,domCs,domRhos,elCp)
@@ -194,11 +192,6 @@ module htfem
 
 			close(resfilenum)
 		end if
-
-		open(149,file=objdir//"bins.out")
-		do i=1,nbins
-			write(149,*) elbins(i)%bin
-		end do
 
 	end subroutine fem
 
@@ -333,8 +326,7 @@ module htfem
 
 	subroutine getInitialGuess(syTvals,noVerts,initGuess)
 		integer :: i,j,n,pos
-		integer,allocatable :: vsortind(:)
-		real(8) :: vMax,vMin,Tmax,Tmin,syTvals(:),noVerts(:,:)
+		real(8) :: vMax,vMin,Tmax,Tmin,grad,syTvals(:),noVerts(:,:)
 		real(8),allocatable :: initGuess(:),tVerts(:)
 
 		n = size(noVerts,1)
@@ -344,11 +336,14 @@ module htfem
 		tVerts = noVerts(:,3)
 		vMax = maxval(tVerts)
 		vMin = minVal(tVerts)
-		Tmax = maxval(syTvals)
-		Tmin = minval(syTvals,MASK=syTvals.ne.0.d0)
+		write(*,*) "maxloc: ", maxloc(tVerts)
+		write(*,*) "minloc: ", minloc(tVerts)
+		Tmax = syTvals(maxloc(tVerts,1))
+		Tmin = syTvals(minloc(tVerts,1))
+		grad = (Tmax-Tmin)/(vMax-vMin)
 
 		do i=1,n
-			initGuess(i)=Tmax-(tVerts(i)-vMin)*(Tmax-Tmin)/(vMax-vMin)
+			initGuess(i)=Tmin+(tVerts(i)-vMin)*grad
 		end do
 
 	end subroutine getInitialGuess
