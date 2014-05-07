@@ -73,4 +73,26 @@ module postproc
 		
 	end subroutine getflowrates
 
+	subroutine writeresultsvtk(noVerts,connTab,revals)
+		integer,parameter :: fid = 246
+		integer :: connTab(:,:)
+		integer,allocatable :: celltypes(:)
+		real(8) :: reVals(:),noVerts(:,:)
+		character(*),parameter :: objdir = "../obj/",				&
+								  resfile = objdir//"res.vtk"
+
+		open(fid,file=resfile)
+		write(fid,*)"# vtk DataFile Version 1.0"
+		write(fid,*)"3D Unstructured Grid of Linear Tetrahedrons"
+		write(fid,*)"ASCII"
+		write(fid,*)""
+		write(fid,*)"DATASET UNSTRUCTURED_GRID"
+		write(fid,*)"POINTS ",trim(size(noVerts,1))," double"
+		do i=1,size(noVerts,1)
+			write(*,*) noVerts(i,:)
+		end do
+		write(*,*)""
+		
+	end subroutine writeresultsvtk
+
 end module postproc
