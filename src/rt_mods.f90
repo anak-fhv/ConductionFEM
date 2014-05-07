@@ -32,7 +32,6 @@ module rt_types
         !real(dp), dimension(4,4) :: shape_funcs ! shape functions
         
         integer                  :: domain=0      ! to which domain the tetra belongs
-        real(dp)                 :: absorbed=0.0  ! absorbed power
     
     end type tetraElement
     

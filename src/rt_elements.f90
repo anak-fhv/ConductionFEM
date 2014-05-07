@@ -31,31 +31,31 @@ module rt_funcs
             
     end function return_facenumber
     
-    ! return face number for (surface) elements, i.e. handle negative face IDs
-    integer function get_facenumber(face, tetra)
-    
-	    integer            :: face
-	    type(tetraElement) :: tetra
-	    integer :: id
-	    
-	    if (face > 0) then
-		    get_facenumber = face
-		else if (face < 0) then
-			if (count(face == tetra%neighbors(:,2)) /= 1) then
-				write(*,*) "tetraelement has more than 1 or none face on the surface!"
-				stop
-		    else 
-			    do id = 1,4
-				    if (face == tetra%neighbors(id,2)) exit
-				end do
-				get_facenumber = id
-		    end if
-		else
-			write(*,*) "face Id is 0!"
-			stop
-	    end if
-    
-    end function get_facenumber
+!     ! return face number for (surface) elements, i.e. handle negative face IDs
+!     integer function get_facenumber(face, tetra)
+!     
+! 	    integer            :: face
+! 	    type(tetraElement) :: tetra
+! 	    integer :: id
+! 	    
+! 	    if (face > 0) then
+! 		    get_facenumber = face
+! 		else if (face < 0) then
+! 			if (count(face == tetra%neighbors(:,2)) /= 1) then
+! 				write(*,*) "tetraelement has more than 1 or none face on the surface!"
+! 				stop
+! 		    else 
+! 			    do id = 1,4
+! 				    if (face == tetra%neighbors(id,2)) exit
+! 				end do
+! 				get_facenumber = id
+! 		    end if
+! 		else
+! 			write(*,*) "face Id is 0!"
+! 			stop
+! 	    end if
+!     
+!     end function get_facenumber
     
     ! returns the indices of tetraeder points (between 1 and 4) for a given face 
     subroutine return_facevertIds(face, vertIds)
@@ -127,10 +127,10 @@ module rt_funcs
 		real(dp), dimension(3), intent(out) :: normal, point
 		real(dp), dimension(3) :: p2, p3
 		integer, dimension(3) :: vertIDs
-		integer :: tmpface
+! 		integer :: tmpface
 		
-		tmpface = get_facenumber(face,tetra)
-		call return_facevertIds(tmpface,vertIDs)  
+! 		tmpface = get_facenumber(face,tetra)
+		call return_facevertIds(face,vertIDs)  
         call return_coords(tetra, vertices, vertIDs, point, p2, p3)
         normal = cross(p2-point,p3-point)
         normal = normal/norm(normal)

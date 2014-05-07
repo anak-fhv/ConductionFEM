@@ -195,8 +195,10 @@ module tracing
         type(rayContainer), intent(inout)   :: ray
         character(len=*), intent(in)        :: resFname, leaveFname
         real(dp) :: kappa, sigma, beta, omega, length
-        integer :: flag
-
+        integer :: flag, cface
+        real(dp), dimension(3) :: ipoint 
+        type(tetraElement) :: tetra
+        
         ! properties of the medium
         kappa = 10.0_dp
         sigma = 0.75_dp
@@ -209,30 +211,58 @@ module tracing
         do while (ray%power > 0.00001_dp)
         
 	        length = 1.0_dp/beta*log(1/myRandom(0))
+	        ipoint = ray%point + length*ray%direction
 	        flag = 1
             
             ! trace path 
-            do while (ray%length < length)       
-		        call FindNextTetra(vertices,tetraData,ray)
-		        ! point on boundary surface
-	            if (ray%faceID < 0) then
-	                call BoundaryHandling(ray, tetraData(ray%tetraID), vertices, leaveFname)
+            do while (ray%length < length)                
+                ! current tetra
+                tetra = tetraData(ray%tetraID)       
+		        cface = ray%faceID ! to avoid association behavior in function call below
+		        
+		        if (cface <0 ) stop
+		        
+		        ! find next face within same tetra
+		        call FindNextFace(vertices,tetra,ray,cface)
+		         
+		        ! check if point is on a boundary surface
+	            if (tetra%neighbors(ray%faceID,2) < 0) then
+	                call BoundaryHandling(ray, tetra, vertices, leaveFname)
                     flag = 0
                     exit
 			    end if
+			    
+			    ! check if mean-free path length is reached
+			    if (ray%length >= length) exit
+			    
+			    ! update remaining raycontainer values
+			    ray%tetraID = tetra%neighbors(ray%faceID,1) ! neighbouring tetra
+			    ray%faceID = tetra%neighbors(ray%faceID,2)  ! face in neighbouring tetra
             end do
             
             ! ray properties are updated and no scattering or absorption happens
-!             write(*,*) flag
             if (flag < 1) cycle
             
-            ! scattering and absorption
-            call RayAbsorbing(tetraData(ray%tetraID),ray%tetraID,ray%point,(1.0_dp-omega)*ray%power,resFname)
-	        call RayScatter(ray, tetraData(ray%tetraID), vertices)
-	            
-	        ! update ray properties    
-	        ray%faceID = get_facenumber(ray%faceID, tetraData(ray%tetraID))
+            ! set ray point to point where interaction happens
+            ray%point = ipoint
+            
+            !absorption
+            call RayAbsorbing(tetra,ray%tetraID,ray%point,(1.0_dp-omega)*ray%power,resFname)
 	        ray%power = ray%power*omega
+	        
+	        ! scattering
+	        call RayScatter(ray,tetra,vertices)
+	        ! if scattering to a boundary happens
+	        if (tetra%neighbors(ray%faceID,2) < 0) then
+		        call BoundaryHandling(ray, tetra, vertices, leaveFname)
+		        cycle
+		    end if
+		    
+	        ! update ray container
+	        ray%tetraID = tetra%neighbors(ray%faceID,1) ! neighbouring tetra
+	        ray%faceID = tetra%neighbors(ray%faceID,2)  ! face in neighbouring tetra
+	    
+	        ! update ray properties    
 		    ray%length = 0.0_dp
             
         end do 
@@ -242,85 +272,72 @@ module tracing
         
     end subroutine TraceRay
     
-    ! find next tetra Element along ray direction
-    subroutine FindNextTetra(vertices,tetraData,ray)
+    
+    ! find next next face along path in same tetra
+    subroutine FindNextFace(vertices,tetra,ray,faceOld)
         
-        type(tetraElement), intent(in)      :: tetraData(:)
+        type(tetraElement), intent(in)      :: tetra
         real(dp), intent(in)                :: vertices(:,:)
         type(rayContainer), intent(inout)   :: ray
-        real(dp) :: alpha, temp
-        integer  :: f, newFace
-        real(dp), dimension(3) :: rp, v1, v2, nsf 
-        real(dp), dimension(3) :: p1, p2, p3
+        integer, intent(in)                 :: faceOld
+        real(dp), dimension(3) :: p1, p2, p3, nsf
         integer, dimension(3)  :: vertIDs
-        
-!         write(*,*) "rp-fnt:", ray%point
-!         write(*,*) "rd-fnt:", ray%direction
-! !         write(*,*) "rt:", ray%tetraID
-!         write(*,*) "rf:", ray%faceID        
-!         ! test whether point is indeed in triangle
-!         newFace = get_facenumber(ray%faceID, tetraData(ray%tetraID))
-!         call return_facevertIds(newFace,vertIDs)  
-!         call return_coords(tetraData(ray%tetraID), vertices, vertIDs, p1, p2, p3)
-!         if (PointInside(p1,p2,p3,ray%point) .eqv. .false.) then
-!             write(*,*) "Waypoint not in face!"
-!             stop
-!         end if
-        
-        alpha = 100.0_dp  ! some large initial value for alpha
+        real(dp) :: alpha, minalpha
+	    integer :: f
+                        
+        ! get new point on face of tetraeder
+        minalpha = 1000.0_dp
         do f = 1,4
-        
-            if (f == ray%faceID) cycle  ! is face where ray is emitted
+            
+            ! if emitted from, cycle if it is the same face
+            if (f == faceOld) cycle  
             
             ! 1 vertex and 2 vectors of current face
             call return_facevertIds(f,vertIDs)
-            call return_coords(tetraData(ray%tetraID), vertices, vertIDs, rp, v1, v2)
-            v1 = v1 - rp ! make a vector with origin rp  
-            v2 = v2 - rp ! make a vector with origin rp
+            call return_coords(tetra, vertices, vertIDs, p1, p2, p3)
+            p2 = p2 - p1 ! make a vector with origin at p1  
+            p3 = p3 - p1 ! make a vector with origin at p1
             
             ! normal vector of current face  
-            nsf = cross(v1,v2)
+            nsf = cross(p2,p3)
             nsf = nsf/norm(nsf) 
 
             ! calculate length until intersection
-            temp = (dot_product(nsf,rp) - dot_product(nsf,ray%point))/dot_product(nsf, ray%direction)
-            if (temp < 0) cycle ! length can not be negative
+            alpha = (dot_product(nsf,p1) - dot_product(nsf,ray%point))/dot_product(nsf, ray%direction)
+            if (alpha < 0) cycle ! length can not be negative
             
             ! check if temp is the shortest length so far
             ! if true, current face is the face the ray will intersect
-            if (temp < alpha) then
-                alpha = temp
-                newFace = f
+            if (alpha < minalpha) then
+                minalpha = alpha
+                ray%faceID = f
             end if
             
         end do
         
-        ! update ray container
-        ray%length = ray%length + alpha
-        ray%point = ray%point + alpha*ray%direction
-        ray%faceID = tetraData(ray%tetraID)%neighbors(newFace,2)  
-        ray%tetraID = tetraData(ray%tetraID)%neighbors(newFace,1)
-        
+        ! update some raycontainer elements
+        ray%point = ray%point + minalpha*ray%direction
+        ray%length = ray%length + minalpha            
+    
         ! test whether point is indeed in triangle
-        newFace = get_facenumber(ray%faceID, tetraData(ray%tetraID))
-        call return_facevertIds(newFace,vertIDs)  
-        call return_coords(tetraData(ray%tetraID), vertices, vertIDs, p1, p2, p3)
+        call return_facevertIds(ray%faceID,vertIDs)  
+        call return_coords(tetra, vertices, vertIDs, p1, p2, p3)
         if (PointInside(p1,p2,p3,ray%point) .eqv. .false.) then
             write(*,*) "Waypoint not in face!"
-!             write(*,*) "rp:", ray%point
-!             write(*,*) "rt:", ray%tetraID
-!             write(*,*) "rf:", ray%faceID
-!             write(*,*) "rf2:", newFace
+            write(*,*) "rp:", ray%point
+            write(*,*) "rt:", ray%tetraID
+            write(*,*) "rf:", ray%faceID
+            write(*,*) "rd:", ray%direction
+            write(*,*) "alpha:", minalpha
+            write(*,*) "p1:", p1
+            write(*,*) "p2:", p2
+            write(*,*) "p3:", p3
+            write(*,*) "fold:", faceOld
             stop
         end if
-        
-!         write(*,*) "rp-update:", ray%point
-!         write(*,*) "rl-update:", ray%length
-!         write(*,*) "rt-update:", ray%tetraID
-!         write(*,*) "rf-update:", ray%faceID 
-!         write(*,*)
     
-    end subroutine FindNextTetra
+    end subroutine FindNextFace
+        
         
     ! write out location and intensity of ray absorbed
     subroutine RayAbsorbing(tetra, id, point, power, resFname)
@@ -331,13 +348,14 @@ module tracing
 	    real(dp), intent(in)               :: power
 	    character(len=*), intent(in)       :: resFname
 	    
-	    tetra%absorbed = tetra%absorbed + power
+	    ! do some shape function magic
 	    
 	    open(unit=84, file=resFname, action='write', position='append')  
-	    write(84,'(1x,i8,1x,3(e14.6,1x),e14.6)') id, point, tetra%absorbed
+	    write(84,'(1x,i8,1x,3(e14.6,1x),e14.6)') id, point, power
         close(unit=84)
         
     end subroutine RayAbsorbing
+    
     
     ! perform scattering (so far isotropic only)
     subroutine RayScatter(ray, tetra, vertices)
@@ -346,8 +364,7 @@ module tracing
 	    type(tetraElement), intent(in)    :: tetra
 	    real(dp), intent(in)              :: vertices(:,:)
 	    real(dp) :: psi, theta
-	    real(dp), dimension(3) :: v1, v2, normal, point
-	    integer :: tmp
+	    real(dp), dimension(3) :: v1
 	    
 	    ! isotropic case
 	    theta = acos(1.0_dp-2.0_dp*myRandom(0))
@@ -356,26 +373,20 @@ module tracing
 ! 		write(*,*) "theta:", theta
 ! 		write(*,*) "psi:", psi
 		
+		! determine new direction
 		! get 2 perpendicular vectors, such that the old direction is the normal vector
 		! for the plane spanned by the 2 new vectors
 		v1 = cross(eoshift(ray%direction,1),ray%direction)
 		v1 = v1/norm(v1)	         
-        v2 = sin(theta)*(cos(psi)*v1 + sin(psi)*cross(ray%direction, v1)) + cos(theta)*ray%direction
+        ray%direction = sin(theta)*(cos(psi)*v1 + sin(psi)*cross(ray%direction, v1)) + cos(theta)*ray%direction
         
-        ! check if tetraeder has to change
-        ! reason: if new direction points outwrad of current tetraeder
-        call return_surfNormal(tetra, ray%faceID, vertices, normal, point) 
-        if (dot_product(normal,ray%direction)*dot_product(normal,v2) < 0) then
-		    tmp = tetra%neighbors(ray%faceID,2)  
-			ray%tetraID = tetra%neighbors(ray%faceID,1)
-            ray%faceID = tmp
-        end if
-        ray%direction = v2
+        ! find intersection point with face of current tetraeder
+        call FindNextFace(vertices,tetra,ray,-1)
         
-!         write(*,*) "rd-new2:", v2
-!         write(*,*)
+        ! some test of sanity?
         
     end subroutine RayScatter
+        
         
     ! calculate refraction with Snell's law
     subroutine SnellsLaw(incident, n1, n2, nsf, reflect, refract)
@@ -419,6 +430,12 @@ module tracing
 	    character(len=*), intent(in)      :: leaveFname
 	    real(dp), dimension(3) :: nsf, point, reflect, refract 
 	    
+	    ! some sanity check
+	    if (ray%faceID < 0 ) then
+		    write(*,*) " negative face id, where are you coming from?"
+		    stop
+		end if
+	    
 	    ! get surface normal of current face
 	    call return_surfNormal(tetra, ray%faceID, vertices, nsf, point)
 	    ! reflection and refraction  
@@ -439,7 +456,7 @@ module tracing
 	    end if
 	    
 	    ! since current face id is negative, reset it
-        ray%faceID = get_facenumber(ray%faceID, tetra)
+!         ray%faceID = get_facenumber(ray%faceID, tetra)
         ray%length = 0.0_dp
         
 !         write(*,*) "rp", ray%point
