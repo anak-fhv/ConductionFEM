@@ -32,7 +32,6 @@ module rt_types
         !real(dp), dimension(4,4) :: shape_funcs ! shape functions
         
         integer                  :: domain=0      ! to which domain the tetra belongs
-    
     end type tetraElement
     
     type :: emissionSurface
@@ -43,18 +42,27 @@ module rt_types
     end type
     
     type :: rayContainer  ! contains information on the traced ray
-        real(dp), dimension(3) :: point, direction ! current point and its direction
-        integer                :: tetraID          ! current tetraeder indes
-        integer                :: faceID           ! current face index
-        real(dp)               :: length=0.0_dp    ! distance travelled
-        real(dp)               :: power = 1.0_dp   ! current power of ray
-        integer                :: wavelength       ! wavelength
+        real(dp), dimension(3) :: point, direction     ! current point and its direction
+        integer                :: tetraID              ! current tetraeder index
+        integer                :: faceID               ! current face index
+        real(dp)               :: length = 0.0_dp      ! distance travelled
+        real(dp)               :: power = 1.0_dp       ! current power of ray
+        real(dp)               :: wavelength = 1.0_dp  ! wavelength
     end type
     
 end module rt_types       
 
 
+module rt_global
 
+	use rt_constants
+	use rt_types
+	implicit none
+	real(dp), dimension(:), allocatable           :: absorbed
+    real(dp), dimension(:,:), allocatable         :: vertices
+    type(tetraElement), dimension(:), allocatable :: tetraData
+    
+end module
 
 
 
