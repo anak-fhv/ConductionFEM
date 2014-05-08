@@ -73,7 +73,7 @@ module postproc
 		
 	end subroutine getflowrates
 
-	subroutine writeresultsvtk(noVerts,connTab,revals)
+	subroutine writeresultsvtk(noVerts,connTab,reVals)
 		integer,parameter :: fid = 246
 		integer :: nNodes,nElems,nCorners,tetType,connTab(:,:)
 		real(8) :: reVals(:),noVerts(:,:)
@@ -109,8 +109,10 @@ module postproc
 		write(fid,*)"SCALARS temperature double"
 		write(fid,*)"LOOKUP_TABLE default"
 		do i=1,nNodes
-			write(fid,*) revals(i)
+			write(fid,*) reVals(i)
 		end do
+
+		close(fid)
 
 	end subroutine writeresultsvtk
 

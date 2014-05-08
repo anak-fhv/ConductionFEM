@@ -177,20 +177,22 @@ module htfem
 				revals(i)
 			end do
 
-			write(resfilenum,*)
+!			write(resfilenum,*)
 
-			call getflowrates(noVerts,connTab,doElems,domKs,sfElems,	&
-			reVals,(/1/),(/5/),3,qBLow,qBHigh)
+!			call getflowrates(noVerts,connTab,doElems,domKs,sfElems,	&
+!			reVals,(/1/),(/5/),3,qBLow,qBHigh)
 
-			if(nDoms .eq. 2) then
-				write(resfilenum,*) "Sample porosity:",vF(1)/(sum(vF))
-			end if
+!			if(nDoms .eq. 2) then
+!				write(resfilenum,*) "Sample porosity:",vF(1)/(sum(vF))
+!			end if
 
-			write(resfilenum,*) "Fluxes:"
-			write(resfilenum,*) "Boundary low:", qBLow
-			write(resfilenum,*) "Boundary high:", qBHigh
+!			write(resfilenum,*) "Fluxes:"
+!			write(resfilenum,*) "Boundary low:", qBLow
+!			write(resfilenum,*) "Boundary high:", qBHigh
 
 			close(resfilenum)
+
+			call writeresultsvtk(noVerts,connTab,reVals)
 		end if
 
 	end subroutine fem
