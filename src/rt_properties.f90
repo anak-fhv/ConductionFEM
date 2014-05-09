@@ -11,8 +11,8 @@ module rt_properties
     real(dp), parameter              :: Etotal = 100.0 ! total energy
     real(dp), parameter              :: kappa = 0.3    ! absorption coefficient
     real(dp), parameter              :: sigma = 0.4    ! scattering coefficient
-    real(dp), dimension(2),parameter :: refracIndices = (/1.9, 1.5/) ! refraction indices for different domains
-                                                                     ! must be of same size as domains! 
+    real(dp), dimension(2),parameter :: refracIndices = (/1.5, 1.9/) ! refraction indices for different domains
+                                                                     ! must be correspond to domain IDs ! 
      
     contains
     

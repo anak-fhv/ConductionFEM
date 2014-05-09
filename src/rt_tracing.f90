@@ -20,7 +20,7 @@ module tracing
         type(rayContainer)                   :: ray
         real(dp)                             :: t1, t2, dummy
         integer                              :: io_error, write_error, k, alloc_status
-        character(len=100)                   :: leaveFname, d_file1 
+        character(len=100)                   :: leaveFname, d_file1, d_file2, tmp 
         
         ! initialize random generator
         dummy = myRandom(2903)
@@ -44,7 +44,7 @@ module tracing
         call check_io_error(write_error,"writing debug-file 1 header",82)
         close(unit=82, iostat=io_error)
         call check_io_error(io_error,"closing debug-file 1",82)
-        
+             
         ! initialize vector for absorption
         allocate(absorbed(size(vertices,1)), stat=alloc_status)
         call check_alloc_error(alloc_status, "absorbed vector")
@@ -54,8 +54,23 @@ module tracing
         ! TODO: in case several emission surface exist a way of selecting a surface must be chosen     
 	    call cpu_time(t1)
 	    do k = 1,nrays
+		    
+		    ! file for tracing single ray (should be commented if large number of rays are considered)
+		    write(tmp,'(i5.5)') k
+		    d_file2 = objFolder//trim(file_name)//"-raydata"//trim(tmp)//".res" 
+	        open(unit=81, file=d_file2, action='write', status='replace', iostat=io_error)       
+	        call check_io_error(io_error,"creating ray-tracing file",81)
+	        write(81,'(7(1x,a14))',iostat=write_error) "x", "y", "z", "dx", "dy","dz","power" 
+	        call check_io_error(write_error,"writing ray-tracing file header",81)
+            close(unit=81, iostat=io_error)
+	        call check_io_error(io_error,"closing ray-tracing file",81)
+	    
 	        call CreateRay(ems(1), ray, d_file1)
-	        call TraceRay(ray, leaveFname)
+	        ! assign energy to a ray
+            ray%power = Etotal/nrays
+            call WriteRayData(ray, d_file2)
+	        call TraceRay(ray, leaveFname, d_file2)
+	        
 	    end do
 	    call cpu_time(t2)
     
@@ -174,10 +189,10 @@ module tracing
     
     
     ! main raytracing routine
-    subroutine TraceRay(ray, leaveFname)
+    subroutine TraceRay(ray, leaveFname, rtfname)
     
         type(rayContainer), intent(inout) :: ray
-        character(len=*), intent(in)      :: leaveFname
+        character(len=*), intent(in)      :: leaveFname, rtfname
         real(dp)                          :: beta, omega, length
         integer                           :: flag, cface
         real(dp), dimension(3)            :: ipoint 
@@ -205,10 +220,12 @@ module tracing
 		        
 		        ! find next face within same tetra
 		        call FindNextFace(tetra,ray,cface)
+		        call WriteRayData(ray, rtfname)
 		         
 		        ! check if point is on a boundary surface
 	            if (tetra%neighbors(ray%faceID,2) < 0) then
 	                call BoundaryHandling(ray, tetra, leaveFname)
+	                call WriteRayData(ray, rtfname)
                     flag = 0
                     exit
 			    end if
@@ -230,6 +247,7 @@ module tracing
             !absorption
             call RayAbsorbing(ray, tetra, 1.0_dp-omega)
 	        ray%power = ray%power*omega
+	        call WriteRayData(ray, rtfname)
 	        
 	        ! scattering
 	        call RayScatter(ray,tetra)
@@ -238,6 +256,7 @@ module tracing
 		        call BoundaryHandling(ray, tetra, leaveFname)
 		        cycle
 		    end if
+		    call WriteRayData(ray, rtfname)
 		    
 	        ! update ray container
 	        ray%tetraID = tetra%neighbors(ray%faceID,1) ! neighbouring tetra
@@ -250,6 +269,7 @@ module tracing
         
         ! in case a small amount of power remains, absorb ray completely
         if (ray%power > 0) call RayAbsorbing(ray, tetra, 1.0_dp)
+        call WriteRayData(ray, rtfname)
         
     end subroutine TraceRay
     
@@ -392,7 +412,12 @@ module tracing
 		
 		! refraction indices (should come from outside)
 		! refraction indices are defined by module rt_properties
-		ratio = refracIndices(1)/refracIndices(2)
+		if (tetra%neighbors(ray%faceID,2) < 0)  then
+			ratio = refracIndices(tetra%domain+1)/refracIndices(1)
+	    else
+		    ratio = refracIndices(tetra%domain+1)/refracIndices(tetraData(tetra%neighbors(ray%faceID,1))%domain + 1)
+		end if
+
 	    
 	    ! get surface normal of current face
 	    call return_surfNormal(tetra, ray%faceID, nsf, point)
@@ -440,5 +465,18 @@ module tracing
         ray%length = 0.0_dp
 	           
 	end subroutine BoundaryHandling
+	
+	
+	! write raydata
+	subroutine WriteRayData(ray, fname)
+	
+		type(rayContainer), intent(in) :: ray
+		character(len=*), intent(in)   :: fname
+		
+		open(unit=81, file=fname, action='write',  position='append') 
+	    write(81,'(7(1x,e14.6))') ray%point, ray%direction, ray%power
+	    close(unit=81)
+	        
+	end subroutine WriteRayData
 	
 end module tracing
