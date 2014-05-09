@@ -1,13 +1,9 @@
 ! Raytracing pre-process module
-! author: Steffen Finck
-! contact: steffen.finck@fhv.at
 
-module pre_process_data
+module pre_process
 
-	use rt_global
-    use rt_funcs
-    use math_funs
-    use helper_functions
+    use rt_elements
+    use rt_helper
     
     implicit none
     
@@ -596,4 +592,4 @@ module pre_process_data
   
    end subroutine ReadData
 
-end module pre_process_data
+end module pre_process

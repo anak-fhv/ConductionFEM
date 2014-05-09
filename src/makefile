@@ -68,32 +68,40 @@ $(OBJDIR)/solver.o: | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c solver.f90 -o $(OBJDIR)/solver.o
 
 # Raytracing objects
-OBJECTS_rt := $(OBJDIR)/raytracing.o  $(OBJDIR)/rt_mods.o \
+OBJECTS_rt := $(OBJDIR)/raytracing.o  $(OBJDIR)/rt_parameters.o \
 	      $(OBJDIR)/rt_math.o $(OBJDIR)/rt_preprocess.o \
-	      $(OBJDIR)/rt_tracing.o $(OBJDIR)/rt_elements.o	   
+	      $(OBJDIR)/rt_tracing.o $(OBJDIR)/rt_elements.o \
+	      $(OBJDIR)/rt_properties.o $(OBJDIR)/rt_helper.o   
 
 # make only raytracing
 rt: $(OBJECTS_rt) 
 	$(FC) $(FCFLAGS) -o $(OBJDIR)/rt.out $(OBJECTS_rt) $(LIBS)
 
-$(OBJDIR)/raytracing.o: $(OBJDIR)/rt_mods.o $(OBJDIR)/rt_math.o \
-			$(OBJDIR)/rt_preprocess.o $(OBJDIR)/rt_tracing.o| $(OBJDIR) \
-			$(OBJDIR)/rt_elements.o
+$(OBJDIR)/raytracing.o: $(OBJDIR)/rt_parameters.o $(OBJDIR)/rt_math.o \
+			$(OBJDIR)/rt_preprocess.o $(OBJDIR)/rt_tracing.o \
+			$(OBJDIR)/rt_elements.o $(OBJDIR)/rt_properties.o \
+			$(OBJDIR)/rt_helper.o | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -c raytracing.f90 -o $(OBJDIR)/raytracing.o
 
-$(OBJDIR)/rt_mods.o: | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_mods.f90 -o $(OBJDIR)/rt_mods.o	
-	
-$(OBJDIR)/rt_math.o: $(OBJDIR)/rt_mods.o | $(OBJDIR)
-	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_math.f90 -o $(OBJDIR)/rt_math.o
+$(OBJDIR)/rt_properties.o: | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_properties.f90 -o $(OBJDIR)/rt_properties.o
 
+$(OBJDIR)/rt_parameters.o: $(OBJDIR)/rt_properties.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_parameters.f90 -o $(OBJDIR)/rt_parameters.o	
+	
+$(OBJDIR)/rt_math.o: $(OBJDIR)/rt_parameters.o | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_math.f90 -o $(OBJDIR)/rt_math.o
+	
 $(OBJDIR)/rt_elements.o: $(OBJDIR)/rt_math.o | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_elements.f90 -o $(OBJDIR)/rt_elements.o
-			
-$(OBJDIR)/rt_preprocess.o: $(OBJDIR)/rt_elements.o | $(OBJDIR)
+
+$(OBJDIR)/rt_helper.o: | $(OBJDIR)
+	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_helper.f90 -o $(OBJDIR)/rt_helper.o
+	
+$(OBJDIR)/rt_preprocess.o: $(OBJDIR)/rt_elements.o $(OBJDIR)/rt_helper.o | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_preprocess.f90 -o $(OBJDIR)/rt_preprocess.o
 	
-$(OBJDIR)/rt_tracing.o: $(OBJDIR)/rt_elements.o | $(OBJDIR)
+$(OBJDIR)/rt_tracing.o: $(OBJDIR)/rt_elements.o $(OBJDIR)/rt_helper.o | $(OBJDIR)
 	$(FC) $(FCFLAGS) -I$(OBJDIR) -module $(OBJDIR) -c rt_tracing.f90 -o $(OBJDIR)/rt_tracing.o
 
 

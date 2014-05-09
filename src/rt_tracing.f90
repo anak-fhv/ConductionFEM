@@ -4,10 +4,8 @@
 
 module tracing
 
-    use rt_funcs
-    use rt_global
-    use math_funs
-    use helper_functions
+	use rt_elements
+    use rt_helper
     
     implicit none
     
@@ -180,16 +178,13 @@ module tracing
     
         type(rayContainer), intent(inout) :: ray
         character(len=*), intent(in)      :: leaveFname
-        real(dp)                          :: kappa, sigma, beta, omega, length
+        real(dp)                          :: beta, omega, length
         integer                           :: flag, cface
         real(dp), dimension(3)            :: ipoint 
         type(tetraElement)                :: tetra
         
-        ! properties of the medium
-        kappa = 0.20_dp
-        sigma = 0.75_dp
-        
         ! calculate length of initial ray
+        ! kappa and sigma are defined by module rt_properties
         beta = kappa + sigma        
         omega = sigma/beta
         
@@ -352,9 +347,9 @@ module tracing
 	    real(dp)                          :: psi, theta
 	    real(dp), dimension(3)            :: v1
 	    
-	    ! isotropic case
-	    theta = acos(1.0_dp-2.0_dp*myRandom(0))
-	    psi = 2.0_dp*pi*myRandom(0)
+	    ! get random value for angle from phase function
+	    ! phase function is defined in module rt_properties
+	    call PhaseFunction(theta, psi)
 		
 ! 		write(*,*) "theta:", theta
 ! 		write(*,*) "psi:", psi
@@ -383,7 +378,7 @@ module tracing
 	    type(tetraElement), intent(in)    :: tetra
 	    character(len=*), intent(in)      :: leaveFname
 	    real(dp), dimension(3)            :: nsf, point
-	    real(dp)                          :: cosAngle, rho, theta1, theta2, n1, n2, ratio
+	    real(dp)                          :: cosAngle, rho, theta1, theta2, ratio
 	    
 	    ! TODO: 1. check on which boundary the point leaves th enclosure,
 	    !         this might requires different refraction number
@@ -396,9 +391,8 @@ module tracing
 		end if
 		
 		! refraction indices (should come from outside)
-		n1 = 1.9_dp
-		n2 = 1.5_dp
-		ratio = n1/n2
+		! refraction indices are defined by module rt_properties
+		ratio = refracIndices(1)/refracIndices(2)
 	    
 	    ! get surface normal of current face
 	    call return_surfNormal(tetra, ray%faceID, nsf, point)

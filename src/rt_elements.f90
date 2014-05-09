@@ -1,12 +1,8 @@
-! Raytracing element property module module
-! author: Steffen Finck
-! contact: steffen.finck@fhv.at
+! Raytracing elements operation module
 
-module rt_funcs
+module rt_elements
 
-    use rt_types
-    use rt_global 
-    use math_funs
+    use rt_math 
     implicit none
     
     contains
@@ -170,4 +166,4 @@ module rt_funcs
 	    
 	end subroutine Cartesian2Tetra
 	
-end module rt_funcs
+end module rt_elements

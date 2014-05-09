@@ -10,7 +10,7 @@
 
 program raytracing
 
-    use pre_process_data
+    use pre_process
     use tracing
 
     implicit none

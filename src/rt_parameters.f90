@@ -1,22 +1,8 @@
-! RayTracing modules
-! author: Steffen Finck
-! contact: steffen.finck@fhv.at
+! RayTracing modules defining types and global (internal) variables
 
+module rt_parameters
 
-module rt_constants
-
-    implicit none
-    integer, parameter          :: dp = selected_real_kind(p=14)
-    real(dp), parameter         :: pi = 3.14159265358979
-    real(dp), parameter         :: trans = 0.75_dp
-    character(len=7), parameter :: objFolder = "../obj/"
-    character(len=8), parameter :: dataFolder = "../data/"
-end module rt_constants
-
-
-module rt_types
-
-    use rt_constants
+	use rt_properties
     implicit none
     
     type :: tetraElement
@@ -50,19 +36,12 @@ module rt_types
         real(dp)               :: wavelength = 1.0_dp  ! wavelength
     end type
     
-end module rt_types       
-
-
-module rt_global
-
-	use rt_constants
-	use rt_types
-	implicit none
-	real(dp), dimension(:), allocatable           :: absorbed
-    real(dp), dimension(:,:), allocatable         :: vertices
-    type(tetraElement), dimension(:), allocatable :: tetraData
+    ! some gloabl variables
+    real(dp), dimension(:), allocatable           :: absorbed  ! field containing info about absorptio
+    real(dp), dimension(:,:), allocatable         :: vertices  ! filed of all vertices
+    type(tetraElement), dimension(:), allocatable :: tetraData ! type for tetraeder information
     
-end module
+end module rt_parameters
 
 
 

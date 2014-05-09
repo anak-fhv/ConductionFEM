@@ -1,10 +1,8 @@
-! Raytracing tracing math and helper module
-! author: Steffen Finck
-! contact: steffen.finck@fhv.at
+! Raytracing tracing general math module
 
-module math_funs
+module rt_math
     
-    use rt_constants
+    use rt_parameters
     implicit none
     
     contains
@@ -79,63 +77,6 @@ module math_funs
   
         norm = sqrt(dot_product(v,v))
 
-   end function norm
-  
-    ! wrapper for random numbers
-    function myRandom(iflag)
-        use ifport           ! use intel random numbers           
-        
-        real(dp) :: myRandom
-        integer  :: iflag
-        
-        if (iflag > 0) call srand(iflag) ! seeds random number
-        myRandom = drand(0)
-        
-    end function myRandom
+	end function norm
     
-end module math_funs                              
-
-
-module helper_functions
-
-    implicit none
-    
-    contains
-    
-    ! checks for input-output errors
-    subroutine check_io_error(stat, message, unitnumber)
-    
-        integer, intent(in)                :: stat, unitnumber
-        character(*), intent(in), optional :: message
-        
-        if ((stat > 0) .and. present(message)) then
-            write(*,'(A)') "io-error: "//message
-            close(unit=unitnumber)
-            stop
-        else if (stat > 0) then
-            write(*,'(A)') "error in input-output/reading/writing procedure!"
-            close(unit=unitnumber)
-            stop
-        end if
-        
-        return
-    end subroutine check_io_error
-
-    ! checks for alloaction errors    
-    subroutine check_alloc_error(stat, message)
-    
-        integer, intent(in)                :: stat
-        character(*), intent(in), optional :: message
-        
-        if ((stat /= 0) .and. present(message)) then
-            write(*,'(A)') "allocation-error: "//message
-            stop
-        else if (stat > 0) then
-            write(*,'(A)') "error in allocation procedure!"
-            stop
-        end if
-        
-        return
-    end subroutine check_alloc_error
-    
-end module helper_functions
+end module rt_math                           
