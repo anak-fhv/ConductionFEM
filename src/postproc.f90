@@ -73,4 +73,47 @@ module postproc
 		
 	end subroutine getflowrates
 
+	subroutine writeresultsvtk(noVerts,connTab,reVals)
+		integer,parameter :: fid = 246
+		integer :: nNodes,nElems,nCorners,tetType,connTab(:,:)
+		real(8) :: reVals(:),noVerts(:,:)
+		character(*),parameter :: objdir = "../obj/",				&
+								  resfile = objdir//"res.vtk"
+
+		nNodes = size(noVerts,1)
+		nElems = size(connTab,1)
+		nCorners = 4
+		tetType = 10
+		open(fid,file=resfile)
+		write(fid,*)"# vtk DataFile Version 1.0"
+		write(fid,*)"3D Unstructured Grid of Linear Tetrahedrons"
+		write(fid,*)"ASCII"
+		write(fid,*)""
+		write(fid,*)"DATASET UNSTRUCTURED_GRID"
+		write(fid,'(a,2x,i8,2x,a)')"POINTS ",nNodes," double"
+		do i=1,nNodes
+			write(fid,*) noVerts(i,:)
+		end do
+		write(fid,*)""
+		write(fid,'(a,2x,i8,2x,i8)')"CELLS ",nElems,5*nElems
+		do i=1,nElems
+			write(fid,'(3(i8,2x),i8)')nCorners,connTab(i)
+		end do
+		write(fid,*)""
+		write(fid,*)"CELL_TYPES ",nElems
+		do i=1,nElems
+			write(fid,'(i4)')tetType
+		end do
+		write(fid,*)""
+		write(fid,*)"POINT_DATA ",nNodes
+		write(fid,*)"SCALARS temperature double"
+		write(fid,*)"LOOKUP_TABLE default"
+		do i=1,nNodes
+			write(fid,*) reVals(i)
+		end do
+
+		close(fid)
+
+	end subroutine writeresultsvtk
+
 end module postproc

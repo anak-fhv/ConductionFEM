@@ -57,7 +57,7 @@ module assembly
 		do i=1,size(node,1)
 			sz = size(node(i)%col,1)
 			allocate(ind(sz))
-			call indexedsort(node(i)%col,ind)
+			call indsortint(node(i)%col,ind)
 			node(i)%val = node(i)%val(ind)
 			deallocate(ind)
 			call add_duplicates(node(i)%col,node(i)%val,numunique)
@@ -79,7 +79,7 @@ module assembly
 !-------------------------------------------------------------------
 ! Smaller subroutines/helper routines
 !-------------------------------------------------------------------
-	subroutine indexedsort(a,b)
+	subroutine indsortint(a,b)
 		integer,dimension(:) :: a
 		integer,dimension(size(a,1)) :: b
 		integer :: i,j,n,temp
@@ -99,7 +99,29 @@ module assembly
 			end do
 		end do
 		temp = 0
-	end subroutine indexedsort
+	end subroutine indsortint
+
+	subroutine indsortreal(a,b)
+		integer :: i,j,n,temp
+		real :: tempreal,a(:)
+		integer,dimension(size(a,1)) :: b
+
+		n = size(a,1)
+		b = (/1:n/)
+		do i=1,n-1
+			do j=i+1,n
+				if(a(i) > a(j)) then
+					tempreal = a(j)
+					a(j) = a(i)
+					a(i) = tempreal
+					temp = b(i)
+					b(i) = b(j)
+					b(j) = temp
+				end if
+			end do
+		end do
+		temp = 0
+	end subroutine indsortreal
 
 	subroutine add_duplicates(nodecol,nodeval,numunique)
 		integer,dimension(:),allocatable :: nodecol,ind,tempcol

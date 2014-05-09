@@ -13,19 +13,21 @@ module htfem
 	contains
 
 	subroutine fem()
-		integer,parameter :: resfilenum = 101, outfilenum = 102			! Files to store results and other output
+		integer,parameter :: resfilenum = 101, outfilenum = 102,	&	! Files to store results and other output
+							 nbins = 100, bindim = 3
 		integer :: nNodes,nElems,nDoms,nSurfs,elDom,fcBytype,i,j,k,	&	! Prefixes: n=>number, el=>element, fc=>face
 				   meshVals(7),elNodes(4),elByfaces(4),iter				! by=>boundary, sf=>surface, gn=>generation, no=>node
 		integer,allocatable :: doElems(:),byCs(:),stRowPtr(:),		&	! do=>domain, sy=>global system
 							   stCols(:),cpRowPtr(:),cpCols(:),		&
 							   connTab(:,:),sfElems(:,:)
 		real(8),parameter :: kDefault = 1.d0
-		real(8) :: elVol,tAmbient,gnVal,elK,tc,qBHigh,qBLow,		&
-				   byTemp(4),bySrc(4),gnSrc(4),elVerts(4,3),		&
+		real(8) :: elVol,tAmbient,gnVal,elK,tc,dlow,dhigh,qBHigh,	&
+				   qBLow,byTemp(4),bySrc(4),gnSrc(4),elVerts(4,3),	&
 				   elSpfns(4,4),elSt(4,4),bySt(4,4),elCp(4,4)
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
-							   vF(:),domRhos(:),domCs(:),syCp(:)
+							   vF(:),domRhos(:),domCs(:),syCp(:),	&
+							   initGuess(:)
 		character(*),parameter :: objdir = "../obj/",				&
 								  resfile = objdir//"results.out",	&
 								  outfile = objdir//"outputs.out"
@@ -34,6 +36,7 @@ module htfem
 		logical ::	gnUser,trUser,useRK
 		type(noderow) :: noElemPart(4),cpElemPart(4)
 		type(noderow),allocatable :: stNo(:),cpNo(:)
+		type(elementbins),allocatable :: elbins(:)
 
 		write(*,'(a)') "Now reading mesh file..."
 
@@ -47,9 +50,13 @@ module htfem
 		nDoms  = meshVals(6)
 		nSurfs = meshVals(7)
 
+		dlow = minval(noverts(:,bindim),1)
+		dhigh = maxval(noverts(:,bindim),1)
+
 		allocate(sySrc(nNodes))
 		allocate(syTvals(nNodes))
 		allocate(stNo(nNodes))
+		allocate(elbins(nbins))
 
 		if(nDoms .gt. 1) then
 			allocate(vF(nDoms))
@@ -61,8 +68,6 @@ module htfem
 
 		call readboundaryconditions(meshVals,byCs,domKs,domRhos,	&
 		domCs,sfVals,tAmbient,trUser,gnUser)
-
-!		trUser = .true.
 
 		trUser = .false.
 		if(trUser) then
@@ -85,6 +90,8 @@ module htfem
 !	Call stiffness functions
 			call shapefunctions(elVerts,elVol,elSpfns)
 			call elementstiffness(elSpfns,elVol,elK,elSt)
+
+!			call binelement(elbins,bindim,dlow,dhigh,i,elVerts)
 
 			if(trUser) then
 				call getcapacitance(elDom,elVol,domCs,domRhos,elCp)
@@ -154,7 +161,10 @@ module htfem
 			call transientsolve(sySt,stRowPtr,stCols,syCp,cpRowPtr,		&
 			cpCols,sySrc,useRK,syTvals,noVerts)
 		else
-			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,revals,iter)
+			
+			call getInitialGuess(syTvals,noVerts,initGuess)
+			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,initGuess,	&
+			revals,iter)
 
 			write(*,'(a)') "Solution completed."
 			write(*,'(a,i5,2x,a)') "This program took: ",iter,			&
@@ -167,21 +177,22 @@ module htfem
 				revals(i)
 			end do
 
-			write(resfilenum,*)
+!			write(resfilenum,*)
 
-			call getflowrates(noVerts,connTab,doElems,domKs,sfElems,	&
-			reVals,(/3,4/),(/11,12/),3,qBLow,qBHigh)
+!			call getflowrates(noVerts,connTab,doElems,domKs,sfElems,	&
+!			reVals,(/1/),(/5/),3,qBLow,qBHigh)
 
-			if(nDoms .eq. 2) then
-				write(resfilenum,*) "Sample porosity:",		&
-				vF(1)/(sum(vF))
-			end if
+!			if(nDoms .eq. 2) then
+!				write(resfilenum,*) "Sample porosity:",vF(1)/(sum(vF))
+!			end if
 
-			write(resfilenum,*) "Fluxes:"
-			write(resfilenum,*) "Boundary low:", qBLow
-			write(resfilenum,*) "Boundary high:", qBHigh
+!			write(resfilenum,*) "Fluxes:"
+!			write(resfilenum,*) "Boundary low:", qBLow
+!			write(resfilenum,*) "Boundary high:", qBHigh
 
 			close(resfilenum)
+
+			call writeresultsvtk(noVerts,connTab,reVals)
 		end if
 
 	end subroutine fem
@@ -258,6 +269,15 @@ module htfem
 		write(*,*)""
 	end subroutine summarisesystem
 
+	subroutine binelement(elbins,bindim,dlow,dhigh,elno,ec)
+		integer :: bindim,elno
+		real(8) :: dlow,dhigh,cent(3),ec(4,3)
+		type(elementbins) :: elbins(:)
+
+		call elementcentroid(ec,cent)
+		call addtoelementbins(elno,cent,bindim,dlow,dhigh,elbins)
+	end subroutine binelement
+
 	subroutine addtoglobaltemperature(Tvals,elnodes,btemp)
 		real(8),dimension(:),intent(inout) :: Tvals
 		real(8),dimension(4) :: btemp
@@ -305,5 +325,29 @@ module htfem
 			end if
 		end do
 	end subroutine setupfinalequations
+
+	subroutine getInitialGuess(syTvals,noVerts,initGuess)
+		integer :: i,j,n,pos
+		real(8) :: vMax,vMin,Tmax,Tmin,grad,syTvals(:),noVerts(:,:)
+		real(8),allocatable :: initGuess(:),tVerts(:)
+
+		n = size(noVerts,1)
+		allocate(tVerts(n))
+		allocate(initGuess(n))
+
+		tVerts = noVerts(:,3)
+		vMax = maxval(tVerts)
+		vMin = minVal(tVerts)
+		write(*,*) "maxloc: ", maxloc(tVerts)
+		write(*,*) "minloc: ", minloc(tVerts)
+		Tmax = syTvals(maxloc(tVerts,1))
+		Tmin = syTvals(minloc(tVerts,1))
+		grad = (Tmax-Tmin)/(vMax-vMin)
+
+		do i=1,n
+			initGuess(i)=Tmin+(tVerts(i)-vMin)*grad
+		end do
+
+	end subroutine getInitialGuess
 
 end module htfem

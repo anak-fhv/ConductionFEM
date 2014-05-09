@@ -8,10 +8,10 @@ module solver
 !-------------------------------------------------------------------
 !	Minimal Residual Method
 !-------------------------------------------------------------------
-	subroutine minres(acsr,ia,ja,b,maxiter,x,iter)
+	subroutine minres(acsr,ia,ja,b,maxiter,initGuess,x,iter)
 		integer :: maxiter,iter,i,j,k,n,ia(:),ja(:)
 		real(8),parameter :: cc=1e-7
-		real(8) :: alpha,acsr(:),b(:)
+		real(8) :: alpha,acsr(:),b(:),initGuess(:)
 		real(8),allocatable :: x(:),r(:),p(:),temp(:)
 
 		n = size(b,1)
@@ -20,7 +20,8 @@ module solver
 		allocate(p(n))
 		allocate(temp(n))
 
-		x = 0.d0
+!		x = 0.d0
+		x = initGuess
 		call mkl_dcsrgemv("N",n,acsr,ia,ja,x,p)
 		r = b-p
 		call mkl_dcsrgemv("N",n,acsr,ia,ja,r,p)
@@ -61,10 +62,10 @@ module solver
 !-------------------------------------------------------------------
 !	Residual Norm Method
 !-------------------------------------------------------------------
-	subroutine resnorm(acsr,ia,ja,b,maxiter,x,iter)
+	subroutine resnorm(acsr,ia,ja,b,maxiter,initGuess,x,iter)
 		integer :: maxiter,iter,i,j,k,n,ia(:),ja(:)
 		real(8),parameter :: cc=0.001d0
-		real(8) :: alpha,acsr(:),b(:)
+		real(8) :: alpha,acsr(:),b(:),initGuess(:)
 		real(8),allocatable :: x(:),r(:),p(:),temp(:)
 
 		n = size(b,1)
@@ -73,7 +74,8 @@ module solver
 		allocate(p(n))
 		allocate(temp(n))
 
-		x = 0.d0
+!		x = 0.d0
+		x = initGuess
 		call mkl_dcsrgemv("N",n,acsr,ia,ja,x,p)
 		r = b-p
 
@@ -117,11 +119,11 @@ module solver
 !-------------------------------------------------------------------
 !	BiConjugate Gradient (Stabilised) Method
 !-------------------------------------------------------------------
-	subroutine bicgstab(acsr,ia,ja,b,maxiter,x,iter)
+	subroutine bicgstab(acsr,ia,ja,b,maxiter,initGuess,x,iter)
 		integer :: maxiter,iter,i,j,k,n,ia(:),ja(:)
 		real(8),parameter :: cc=1e-9
 		real(8) :: alpha,beta,delta0,delta,delta_old,omega,			&
-		acsr(:),b(:)
+		acsr(:),b(:),initGuess(:)
 		real(8),allocatable :: x(:),r(:),p(:),s(:),rst(:),			&
 		temp1(:),temp2(:)
 
@@ -134,7 +136,9 @@ module solver
 		allocate(temp1(n))
 		allocate(temp2(n))
 
-		x = 0.d0
+!		x = 0.d0
+		x = initGuess
+
 		call mkl_dcsrgemv("N",n,acsr,ia,ja,x,temp1)
 		r = b-temp1
 		rst = 1.d0

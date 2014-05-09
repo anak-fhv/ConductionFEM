@@ -58,13 +58,14 @@ module transient
 		real(8) :: theta,tstep,tfinal,sySt(:),syCp(:),sySrc(:),		&
 		syInit(:),noVerts(:,:)
 		real(8),allocatable :: CKLhs(:),CKRhs(:),FRhs(:),Tnew(:),	&
-		kTRhs(:)
+		kTRhs(:),initGuess(:)
 		character(*),parameter :: objdir="../obj/",ftr="trans.out"
 		character(6) :: fname
 
 		n = size(sySrc,1)
 		allocate(FRhs(n))
 		allocate(kTRhs(n))
+		allocate(initGuess(n))
 		nv = size(sySt,1)
 		allocate(CKLhs(nv))
 		allocate(CKRhs(nv))
@@ -75,13 +76,15 @@ module transient
 		theta = 1.d0
 		CKLhs = theta*tstep*sySt + syCp
 		CKRhs = syCp - (1.d0-theta)*tstep*sySt
+		initGuess = 0.d0
 
 		open(trfileno,file=objdir//ftr)
 		do i=1,ntstep
 			FRhs = theta*sySrc + (1.d0-theta)*sySrc
 			call mkl_dcsrgemv("N",n,CKRhs,iaSt,jaSt,syInit,kTRhs)
 			FRhs = tstep*FRhs + kTRhs
-			call bicgstab(CKLhs,iaCp,jaCp,FRhs,100000,Tnew,iter)
+			call bicgstab(CKLhs,iaCp,jaCp,FRhs,100000,initGuess,	&
+			Tnew,iter)
 			syInit = Tnew
 			deallocate(Tnew)
 			open(trfileno,file=objdir//ftr)
@@ -149,11 +152,15 @@ module transient
 !-------------------------------------------------------------------
 
 	subroutine timegradient(syCp,iaCp,jaCp,rhs,diffT)
-		integer :: iter,iaCp(:),jaCp(:)
+		integer :: n,iter,iaCp(:),jaCp(:)
 		real(8) :: syCp(:),rhs(:)
-		real(8),allocatable :: diffT(:)
+		real(8),allocatable :: initGuess(:),diffT(:)
 
-		call bicgstab(syCp,iaCp,jaCp,rhs,100000,diffT,iter)
+		n = size(rhs,1)
+		allocate(initGuess(n))
+		initGuess = 0.d0
+
+		call bicgstab(syCp,iaCp,jaCp,rhs,100000,initGuess,diffT,iter)
 
 	end subroutine timegradient
 
