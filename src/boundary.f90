@@ -9,8 +9,8 @@ module boundary
 ! Routine to read boundary conditions from the data file
 !-------------------------------------------------------------------
     subroutine readboundaryconditions(meshdetails, boundaryconditions, &
-    kvals, domRhos, domCs, boundaryvalues, Tambient, generation,	   &
-	transience,	generationrate)
+    kvals, domRhos, domCs, boundaryvalues, Tambient, transience,	   &
+	generation,	generationrate)
         integer,parameter :: datafilenum=401
         character(len=*),parameter :: filename='datafile.dat'
         integer,dimension(7) :: meshdetails

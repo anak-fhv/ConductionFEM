@@ -75,7 +75,7 @@ module postproc
 
 	subroutine writeresultsvtk(noVerts,connTab,reVals)
 		integer,parameter :: fid = 246
-		integer :: nNodes,nElems,nCorners,tetType,connTab(:,:)
+		integer :: i,nNodes,nElems,nCorners,tetType,connTab(:,:)
 		real(8) :: reVals(:),noVerts(:,:)
 		character(*),parameter :: objdir = "../obj/",				&
 								  resfile = objdir//"res.vtk"
@@ -85,29 +85,29 @@ module postproc
 		nCorners = 4
 		tetType = 10
 		open(fid,file=resfile)
-		write(fid,*)"# vtk DataFile Version 1.0"
-		write(fid,*)"3D Unstructured Grid of Linear Tetrahedrons"
-		write(fid,*)"ASCII"
-		write(fid,*)""
-		write(fid,*)"DATASET UNSTRUCTURED_GRID"
+		write(fid,'(a)')"# vtk DataFile Version 1.0"
+		write(fid,'(a)')"3D Unstructured Grid of Linear Tetrahedrons"
+		write(fid,'(a)')"ASCII"
+		write(fid,'(a)')""
+		write(fid,'(a)')"DATASET UNSTRUCTURED_GRID"
 		write(fid,'(a,2x,i8,2x,a)')"POINTS ",nNodes," double"
 		do i=1,nNodes
 			write(fid,*) noVerts(i,:)
 		end do
-		write(fid,*)""
+		write(fid,'(a)')""
 		write(fid,'(a,2x,i8,2x,i8)')"CELLS ",nElems,5*nElems
 		do i=1,nElems
-			write(fid,'(3(i8,2x),i8)')nCorners,connTab(i)
+			write(fid,'(i2,2x,3(i8,2x),i8)')nCorners,connTab(i,:)-1
 		end do
-		write(fid,*)""
-		write(fid,*)"CELL_TYPES ",nElems
+		write(fid,'(a)')""
+		write(fid,'(a,2x,i8)')"CELL_TYPES ",nElems
 		do i=1,nElems
 			write(fid,'(i4)')tetType
 		end do
-		write(fid,*)""
-		write(fid,*)"POINT_DATA ",nNodes
-		write(fid,*)"SCALARS temperature double"
-		write(fid,*)"LOOKUP_TABLE default"
+		write(fid,'(a)')""
+		write(fid,'(a,2x,i8)')"POINT_DATA ",nNodes
+		write(fid,'(a)')"SCALARS temperature double"
+		write(fid,'(a)')"LOOKUP_TABLE default"
 		do i=1,nNodes
 			write(fid,*) reVals(i)
 		end do
