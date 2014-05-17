@@ -1,4 +1,5 @@
 ! RayTracing modules defining types and global (internal) variables
+! also contains functions which require user input or change
 
 module rt_parameters
 
@@ -23,6 +24,7 @@ module rt_parameters
     type :: emissionSurface
         character(len=100)                   :: name ! name of emission surface
         real(dp), dimension(:), allocatable  :: area ! cumsum of area of the faces on the surface of emission
+        real(dp)                             :: totalarea ! totalarea of surface
         integer, dimension(:,:), allocatable :: elemData ! (:,1) number of tetra-element      
                                                          ! (:,2) face of tetra-element which is on the surface
     end type
@@ -37,9 +39,70 @@ module rt_parameters
     end type
     
     ! some gloabl variables
-    real(dp), dimension(:), allocatable           :: absorbed  ! field containing info about absorptio
-    real(dp), dimension(:,:), allocatable         :: vertices  ! filed of all vertices
-    type(tetraElement), dimension(:), allocatable :: tetraData ! type for tetraeder information
+    real(dp), dimension(:), allocatable              :: absorbed  ! field containing info about absorptio
+    real(dp), dimension(:,:), allocatable            :: vertices  ! filed of all vertices
+    type(tetraElement), dimension(:), allocatable    :: tetraData ! type for tetraeder information
+    type(emissionSurface), dimension(:), allocatable :: emSurf    ! emission surfaces
+    
+    contains
+    ! wrapper for random numbers
+    function myRandom(iflag)
+        use ifport           ! use intel random numbers           
+        
+        real(dp) :: myRandom
+        integer  :: iflag
+        
+        if (iflag > 0) call srand(iflag) ! seeds random number
+        myRandom = drand(0)
+        
+    end function myRandom
+    
+    
+    ! phase function for scattering
+	subroutine PhaseFunction(theta, psi)
+	
+		real(dp), intent(out) :: theta, psi
+		 
+		! isotropic case
+	    theta = acos(1.0_dp-2.0_dp*myRandom(0))
+	    psi = 2.0_dp*pi*myRandom(0)		
+        
+    end subroutine PhaseFunction
+    
+    
+    ! select an emission surface
+     integer function emsIDfun()
+	    
+	    real(dp)             :: r, totalarea
+	    integer              :: i
+	    
+	    ! the code below selects an emission surface based on
+	    ! the overall area of all emission surfaces
+	    ! get totalarea of all emission surfaces
+	    totalarea = sum(emSurf%totalarea)
+	    r = myRandom(0)
+		
+		do emsIDfun = 1,size(emSurf)
+			if (r <= sum(emSurf(1:emsIDfun)%totalarea)/totalarea) exit
+	    end do
+	    		 
+	end function emsIDfun
+	
+	
+	! determine power of a single ray
+	real(dp) function raypowerfun(temp, area)
+		
+		real(dp), intent(in) :: temp  ! temperature (in K)
+		real(dp), intent(in) :: area  ! area of emission face 
+		
+		! setup if power is independent of location and temperature
+! 		raypowerfun = Etotal/nrays
+		
+		! setup if temperature-dependence exist
+		raypowerfun = eta*sbk*temp**4*area
+		
+	end function raypowerfun
+	
     
 end module rt_parameters
 

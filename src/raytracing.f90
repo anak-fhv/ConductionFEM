@@ -14,19 +14,24 @@ program raytracing
     use tracing
 
     implicit none
-    character(len=100)                               :: file_name
-    character(len=100), dimension(1)                 :: emSurfNames    
-    type(emissionSurface), dimension(:), allocatable :: emSurf
-    integer                                          :: npart, nrays, i
+    integer  :: i
+    real(dp) :: dummy
     
     ! user input
-    file_name = "sphere"
-    npart = 4
-    emSurfNames = ['xLow'] ! right now this requires to state the correct dimension in above declaration       
-    nrays = 10
+    ! all user input is set in rt_properties and used as global variables
     
-    call start_preprocessing(file_name, emSurfNames, npart, emSurf)
-    call start_tracing(emSurf, file_name, nrays)
+    ! intialize random generator
+    dummy = myRandom(2803) 
+    
+    call start_preprocessing
+!     write(*,*) tetraData(36348)%vertexIDs
+!     write(*,*) tetraData(36348)%neighbors(:,1)
+!     write(*,*) tetraData(36348)%neighbors(:,2)
+!     write(*,*)
+!     write(*,*) tetraData(36220)%vertexIDs
+!     write(*,*) tetraData(36220)%neighbors(:,1)
+!     write(*,*) tetraData(36220)%neighbors(:,2)
+    call start_tracing
     
     ! just some output
     open(unit=101, file=objFolder//"absorbed.res", action='write',status='new')   
@@ -34,7 +39,7 @@ program raytracing
 	    if (absorbed(i) /= 0.0_dp) write(101,'(i8,1x,e14.6)') i, absorbed(i)
     end do
     close(unit=101)
-    
-    write(*,*) "fraction of power absorbed:", sum(absorbed)/Etotal
+!     
+!     write(*,*) "fraction of power absorbed:", sum(absorbed)/Etotal
     
 end program raytracing 

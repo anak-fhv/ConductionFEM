@@ -12,53 +12,45 @@ module pre_process
     ! wrapper for starting pre-processing. Basically checks whether provided input file exists,
     ! and calls appropriate pre-processing routine. In case file does not exist, it checks 
     ! if the respective other file (either *.msh or *.data) exists and calls respective routine.
-    subroutine start_preprocessing(file_name, emSurfNames, npart, ems)
+    subroutine start_preprocessing
     
-	    character(len=*), intent(in)                                  :: file_name 
-        character(len=*), intent(in)                                  :: emSurfNames(:)
-        integer, intent(in)                                           :: npart
-        type(emissionSurface), dimension(:), allocatable, intent(out) :: ems
-        logical                                                       :: l
+		logical :: l
                 
-        ! check file provided by user exists
+        ! check if file provided by user exists
         ! first check for *.data file (since it is faster)
-        inquire(file=dataFolder//trim(file_name)//".data", exist=l)
+        inquire(file=dataFolder//trim(data_fname)//".data", exist=l)
         if (l .eqv. .true.) then
 			 write(*,*) 
-	         write(*,*) "using "//trim(file_name)//".data as input"
+	         write(*,*) "using "//trim(data_fname)//".data as input"
 	         write(*,*)
-             call ReadData(ems, trim(file_name)//".data")             
+             call ReadData(trim(data_fname)//".data")             
         else ! use *.msh file since *.data does not exist
-	        inquire(file=dataFolder//trim(file_name)//".msh", exist=l)
+	        inquire(file=dataFolder//trim(data_fname)//".msh", exist=l)
 	        if (l .eqv. .false.) then
-		        write(*,*) trim(file_name)//" does not exist! (neither as .msh or .data)"
+		        write(*,*) trim(data_fname)//" does not exist! (neither as .msh or .data)"
 	            stop
             end if
             write(*,*) 
-	        write(*,*) "using "//trim(file_name)//".msh as input"
+	        write(*,*) "using "//trim(data_fname)//".msh as input"
 	        write(*,*)
-            call read_mesh_data(trim(file_name)//".msh", emSurfNames, npart, ems)
-	        call WriteData(ems,trim(file_name)//".msh")
+            call read_mesh_data(trim(data_fname)//".msh")
+	        call WriteData(trim(data_fname)//".msh")
         end if    
     
     end subroutine start_preprocessing
     
     ! main routine which perform reading of input data and calls routines for
     ! creating emission surfaces and populates tetraElement-type
-    subroutine read_mesh_data(file_name, emSurfNames, npart, ems)
+    subroutine read_mesh_data(file_name)
 
-        character(len=*), intent(in)                                  :: file_name 
-        character(len=*), intent(in)                                  :: emSurfNames(:)
-        integer, intent(in)                                           :: npart
-        type(emissionSurface), dimension(:), allocatable, intent(out) :: ems
-        integer                                                       :: io_error, read_error, alloc_status, i, j, k, n
-        integer                                                       :: nVertices, nTetra, nHexa, nPyr, nWedges, nDomain, nSurface
-        integer, dimension(:,:), allocatable                          :: surfData
-        integer, dimension(:), allocatable                            :: elemDomain
-        real                                                          :: t1, t2
-        integer                                                       :: nElem, remainElem
-        character(len=100)                                            :: dName, surfName, line
-        
+        character(len=*), intent(in)         :: file_name 
+        integer                              :: io_error, read_error, alloc_status, i, j, k, n
+        integer                              :: nVertices, nTetra, nHexa, nPyr, nWedges, nDomain, nSurface
+        integer, dimension(:,:), allocatable :: surfData
+        integer, dimension(:), allocatable   :: elemDomain
+        real                                 :: t1, t2
+        integer                              :: nElem, remainElem
+        character(len=100)                   :: dName, surfName, line
     
         call cpu_time(t1) ! just out of interest measure time of routine
         
@@ -136,7 +128,7 @@ module pre_process
         end do     
         
         ! read surface information
-        allocate(ems(size(emSurfNames)), stat=alloc_status)
+        allocate(emSurf(size(emSurfNames)), stat=alloc_status)
         call check_alloc_error(alloc_status, "ems array")
         k = 0
 
@@ -161,22 +153,26 @@ module pre_process
             ! assign data to tetraElement-type
             ! if a face is on the surface, the tetraeder elements reference itself and the
             ! neighboring face is a negitve numver with the index of the surface
-            do n = 1, nElem
-                tetraData(surfData(n,1))%neighbors(surfData(n,2),1) = surfData(n,1)
-                tetraData(surfData(n,1))%neighbors(surfData(n,2),2) = -i
-            end do
+            if (count(surfName == ignoredSurfaces) == 0) then
+	            do n = 1, nElem
+	                tetraData(surfData(n,1))%neighbors(surfData(n,2),1) = surfData(n,1)
+	                tetraData(surfData(n,1))%neighbors(surfData(n,2),2) = -i
+	            end do
+            end if
             
             ! if the surface is a emission surface
             if (any(surfName == emSurfNames)) then
                 k = k + 1
-                allocate(ems(k)%area(nElem), stat=alloc_status)
+                allocate(emSurf(k)%area(nElem), stat=alloc_status)
                 call check_alloc_error(alloc_status, "ems(k)%area array")
-                allocate(ems(k)%elemData(nElem,2), stat=alloc_status)
+                allocate(emSurf(k)%elemData(nElem,2), stat=alloc_status)
                 call check_alloc_error(alloc_status, "ems(k)%elemData array")
                 
                 ! create emission surface
-                ems(k)%name = surfName
-                call CreateEmissionSurf(surfData, ems(k))
+                emSurf(k)%name = surfName
+                call CreateEmissionSurf(surfData, emSurf(k))
+                
+                write(*,'(1x,a20,1x,e14.6)') surfName, emSurf(k)%totalarea
                 
             end if
             
@@ -190,20 +186,27 @@ module pre_process
         close(unit=81)
         
         ! assign neighbors
+        write(*,*)
         write(*,*) "Creating Element Connections"
         write(*,*) "============================="
         write(*,*) 
-        call assign_neighbors(npart)
+        call assign_neighbors
         
         ! check for double entries (could be commented)
+        open(unit=99, file=dataFolder//"doubledata.res", status='replace', action='write')     
         do i = 1,nTetra
             do n = 1,4
-                if (tetraData(i)%neighbors(n,1) == i) then 
-	                j = count(tetraData(i)%neighbors(n,2) == tetraData(i)%neighbors(:,2))
-	            else      
-	                j= count(tetraData(i)%neighbors(n,1) == tetraData(i)%neighbors(:,1))
-	            end if  
-                if (j > 1) then
+	            j = 0
+		        
+		        ! count how often the current neighbor is referenced as neighbor in the element
+		        ! could be more than once if more than face are on a surface
+		        j = j + count((tetraData(i)%neighbors(n,1) == tetraData(i)%neighbors(:,1)) .and. (tetraData(i)%neighbors(n,1) /= i)) - 1
+	         
+                ! check if zero entry exist
+                if (tetraData(i)%neighbors(n,1) == 0) j = j + 1
+                	            
+                if (j > 0) then
+                    write(99,'(9(i8))') i, tetraData(i)%neighbors(:,1), tetraData(i)%neighbors(:,2)      
                     write(*,*) "double entry"
                     write(*,*) tetraData(i)%neighbors(:,1)
                     write(*,*) tetraData(i)%neighbors(:,2)
@@ -212,6 +215,7 @@ module pre_process
                 end if
             end do
         end do
+        close(unit = 99)
         
         ! report timing
         call cpu_time(t2)
@@ -224,9 +228,8 @@ module pre_process
 
 
     ! main routine for assigning neighbors
-    subroutine assign_neighbors(npart)
+    subroutine assign_neighbors
        
-        integer, intent(in)                :: npart
         integer                            :: alloc_status, n, k, r
         integer, dimension(:), allocatable :: list, id_start, id_end
         integer, dimension(1)              :: idFirstZero, maxElem
@@ -249,23 +252,28 @@ module pre_process
             id_start(n) = 1 +  (n-1)*r
             id_end(n) = n*r
             if (n == npart) id_end(n) = maxElem(1)
+!             write(*,*) n
+!             write(*,*) id_start(n)
+!             write(*,*) id_end(n)
         end do
         
         write(*,*) "number of partitions ", npart
         write(*,*) "number of valid elements ", maxElem
-!         write(*,*) id_start
-!         write(*,*) id_end
         
         ! loop over all partitions and perform searches
         do n = 1,npart
-        
-            write(*,*) "parsing partition number", n 
+!         do n = 1,1
+             
+            write(*,*)
+            write(*,*) "parsing PARTITION number", n
+            write(*,*) "searching in list of size", size(list(id_start(n):id_end(n)))  
             ! search within same partition
             call find_neighbors_single_list(list(id_start(n):id_end(n)))            
             
             ! filter list of partition n by putting zeros at the end of the list
             call filter_list(list(id_start(n):id_end(n)),id_start(n), id_end(n))
             if (id_end(n) == 0) exit
+            write(*,*) "size of list after search", size(list(id_start(n):id_end(n)))
             
             ! search in all partitions with larger index number
             do k = npart, n+1, -1
@@ -274,6 +282,7 @@ module pre_process
                 
                 ! filter list of partition n
                 call filter_list(list(id_start(n):id_end(n)),id_start(n), id_end(n))
+                write(*,*) "size of list after search",size(list(id_start(n):id_end(n)))," in list",k
                 if (id_end(n) == 0) exit
                 
                 ! filter list of partition k  
@@ -365,12 +374,20 @@ module pre_process
         n = size(list) ! size of list        
         ! loop over elements in list and identify neighbors
         do i = 1,n-1
+                    
+!             if (list(i) == 36348) write(*,*) 36348        
+!             if (list(i) == 36220) write(*,*) 36220
                                                  
             ! if element has already 4 neighbors
             if (list(i) == 0) cycle
             
+!             if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) tetraData(list(i))%vertexIDs
+!             if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) tetraData(list(i))%neighbors(:,1)
+!             if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) tetraData(list(i))%neighbors(:,2)
+            
             ! count how many neighbors element i already has
             counter = count(tetraData(list(i))%neighbors(:,1) > 0)
+!             if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) counter
                                    
             ! search all elements below
             do j= i+1,n
@@ -384,20 +401,27 @@ module pre_process
                              
                 ! 3 vertices are equal, elements are neighbors
                 if (count(mask) == 3) then
+                
+! 	                if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) list(j)
                     
                     counter = counter + 1   ! increase number of neighbors in element i
                     face_i = return_facenumber(mask) ! get face of element i which is shared by both elements
                     call add_neighbor(list(i), list(j), face_i)
+                    
+!                     if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) counter
+!                     if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) face_i
                     
                     ! if element j has four neighbors, add zero into list
                     if (minval(tetraData(list(j))%neighbors(:,1)) > 0) then
                         list(j) = 0
                     end if
                     
+!                     if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) list(j)
+                    
                 end if
                 
                 ! if tetra element i has 4 neighbors break inner do-loop
-                if (counter == 4) then
+                if (counter == 4) then                
                     list(i) = 0  ! assign zero to element so it will not be used in the following searches
                     exit
                 end if
@@ -479,15 +503,15 @@ module pre_process
         end do
         
         ! normalize area
-        ems%area = ems%area/ems%area(size(surfData,1))
+        ems%totalarea = ems%area(size(surfData,1))
+        ems%area = ems%area/ems%totalarea
         
     end subroutine CreateEmissionSurf
     
     
     ! write out data from pre-processing
-    subroutine WriteData(emSurf, file_name)
+    subroutine WriteData(file_name)
     
-        type(emissionSurface), intent(in) :: emSurf(:)
         character(len=*), intent(in)      :: file_name
         character(len=100)                :: fname
         integer                           :: io_error, n, k, write_error
@@ -514,7 +538,7 @@ module pre_process
         
         ! write tetraData (connections)
         do n = 1, size(tetraData)
-            write(82,'(1x,4(i8,1x,i2))',iostat=write_error) transpose(tetraData(n)%neighbors) 
+            write(82,'(1x,4(i8,1x,i4))',iostat=write_error) transpose(tetraData(n)%neighbors) 
             call check_io_error(write_error,"writing tetra data part 2",82)
         end do
         
@@ -527,6 +551,7 @@ module pre_process
                 write(82,'(1x,i8,1x,i2,2x,e14.6)',iostat=write_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
                 call check_io_error(write_error,"writing emission surface data",82)
             end do
+            write(82,'(e14.6)') emSurf(n)%totalarea
         end do    
         
         ! close file
@@ -536,11 +561,10 @@ module pre_process
    
    
     ! read data from exisiting pre-processing file
-    subroutine ReadData(emSurf,file_name)
+    subroutine ReadData(file_name)
     
-        type(emissionSurface), allocatable, dimension(:), intent(out) :: emSurf
-        character(len=*), intent(in)                                  :: file_name
-        integer :: io_error, n, k, read_error, nVertices, nTetra, nSurf, alloc_status, nElem                                        
+        character(len=*), intent(in) :: file_name
+        integer                      :: io_error, n, k, read_error, nVertices, nTetra, nSurf, alloc_status, nElem                                        
         
         ! open file
         open(unit=83, file=dataFolder//file_name, status='old', action='read', iostat=io_error)       
@@ -565,7 +589,7 @@ module pre_process
             call check_io_error(read_error,"reading tetra data",83)
         end do
         do n = 1, nTetra
-            read(83,'(1x,4(i8,1x,i2))',iostat=read_error) (tetraData(n)%neighbors(k,1), tetraData(n)%neighbors(k,2), k=1,4)
+            read(83,'(1x,4(i8,1x,i4))',iostat=read_error) (tetraData(n)%neighbors(k,1), tetraData(n)%neighbors(k,2), k=1,4)
             call check_io_error(read_error,"reading tetra data part 2",83)
         end do
         
@@ -585,6 +609,7 @@ module pre_process
                 read(83,'(1x,i8,1x,i2,2x,e14.6)',iostat=read_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
                 call check_io_error(read_error,"writing emission surface data",83)
             end do
+            read(83,'(e14.6)') emSurf(n)%totalarea
         end do    
         
         ! close file
