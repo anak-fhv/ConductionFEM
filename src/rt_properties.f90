@@ -18,10 +18,12 @@ module rt_properties
                                                                      ! must be correspond to domain IDs !
     ! names of surfaces from which rays can be emitted
     ! dimension attribute must be set correctly                                                                  
-    character(len=100), dimension(3), parameter      :: emSurfNames = ["zLow_Domain2", "zHigh_Domain2", "Iface_Domain2"]                                                                          
+    character(len=100), dimension(3), parameter      :: emSurfNames = (/"zLow_Domain2", "zHigh_Domain2", "Iface_Domain2"/)                                                                          
     ! parameter below lists surfaces which do not count as neighbor, but from which rays can be emitted                                                                  
-    character(len = 100), dimension(2), parameter    :: ignoredSurfaces = ["Iface_Domain1", "Iface_Domain2"]                                                                 
+    character(len = 100), dimension(2), parameter    :: ignoredSurfaces = (/"Iface_Domain1", "Iface_Domain2"/)                                                                 
     integer, parameter :: npart = 10    ! number of partitions for data input
     integer, parameter :: nrays = 1000000    ! number of rays to be emitted in total
+    character(len=20), parameter :: RT_setup = 'tomo'  ! select which setup is considered, values are 'tomo' or 'led'
+    integer, parameter :: nRayPaths = 10  ! number of ray path written out in file (maximal 10000)
     
 end module rt_properties

@@ -90,18 +90,30 @@ module rt_parameters
 	
 	
 	! determine power of a single ray
-	real(dp) function raypowerfun(temp, area)
+	real(dp) function RayPowerFun(temp, area)
 		
 		real(dp), intent(in) :: temp  ! temperature (in K)
 		real(dp), intent(in) :: area  ! area of emission face 
 		
-		! setup if power is independent of location and temperature
-! 		raypowerfun = Etotal/nrays
+		if (RT_setup .eq. 'led') then
+			! setup if power is independent of location and temperature
+			RayPowerFun = Etotal/nrays
+		else
+			! setup if temperature-dependence exist
+			RayPowerFun = eta*sbk*temp**4*area
+		end if
 		
-		! setup if temperature-dependence exist
-		raypowerfun = eta*sbk*temp**4*area
-		
-	end function raypowerfun
+	end function RayPowerFun
+	
+	
+	! get mean free pathlength
+	real(dp) function GetPathLength()
+	
+		! only meaningful for LED setup
+	    ! kappa and sigma are globally defined material properties
+		GetPathLength = 1.0_dp/(kappa+sigma)*log(1/myRandom(0))
+	    
+	end function GetPathLength
 	
     
 end module rt_parameters
