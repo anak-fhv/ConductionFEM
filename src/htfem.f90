@@ -69,7 +69,7 @@ module htfem
 		call readboundaryconditions(meshVals,byCs,domKs,domRhos,	&
 		domCs,sfVals,tAmbient,trUser,gnUser)
 
-		trUser = .false.
+!		trUser = .false.
 		if(trUser) then
 			allocate(cpNo(nNodes))
 		end if
@@ -157,9 +157,9 @@ module htfem
 		write(*,'(a)') "Entered solution step..."
 
 		if(trUser) then
-			useRK = .true.
+!			useRK = .true.
 			call transientsolve(sySt,stRowPtr,stCols,syCp,cpRowPtr,		&
-			cpCols,sySrc,useRK,syTvals,noVerts)
+			cpCols,sySrc,useRK,syTvals,noVerts,connTab,nDoms,doElems)
 		else
 			
 			call getInitialGuess(syTvals,noVerts,initGuess)
@@ -172,10 +172,10 @@ module htfem
 
 			open(resfilenum,file=resfile)
 
-			do i=1,nNodes
-				write(resfilenum,'(3(f9.4,2x),f9.4)')noVerts(i,1:3), 	&
-				revals(i)
-			end do
+!			do i=1,nNodes
+!				write(resfilenum,'(3(f9.4,2x),f9.4)')noVerts(i,1:3), 	&
+!				revals(i)
+!			end do
 
 !			write(resfilenum,*)
 
@@ -192,7 +192,8 @@ module htfem
 
 			close(resfilenum)
 
-			call writeresultsvtk(noVerts,connTab,reVals)
+			call writeresultsvtk(noVerts,connTab,nDoms,doElems,		&
+			reVals)
 		end if
 
 	end subroutine fem
@@ -338,15 +339,21 @@ module htfem
 		tVerts = noVerts(:,3)
 		vMax = maxval(tVerts)
 		vMin = minVal(tVerts)
+
 		write(*,*) "maxloc: ", maxloc(tVerts)
 		write(*,*) "minloc: ", minloc(tVerts)
 		Tmax = syTvals(maxloc(tVerts,1))
 		Tmin = syTvals(minloc(tVerts,1))
-		grad = (Tmax-Tmin)/(vMax-vMin)
-
-		do i=1,n
-			initGuess(i)=Tmin+(tVerts(i)-vMin)*grad
-		end do
+		write(*,*) "maxval: ", Tmax
+		write(*,*) "minval: ", Tmin
+		if(Tmax .ne. Tmin) then
+			grad = (Tmax-Tmin)/(vMax-vMin)
+			do i=1,n
+				initGuess(i)=Tmin+(tVerts(i)-vMin)*grad
+			end do
+		else
+			initGuess = 0.d0
+		end if
 
 	end subroutine getInitialGuess
 
