@@ -73,9 +73,10 @@ module postproc
 		
 	end subroutine getflowrates
 
-	subroutine writeresultsvtk(noVerts,connTab,reVals)
+	subroutine writeresultsvtk(noVerts,connTab,nDoms,doElems,reVals)
 		integer,parameter :: fid = 246
-		integer :: i,nNodes,nElems,nCorners,tetType,connTab(:,:)
+		integer :: i,nNodes,nElems,nDoms,nCorners,tetType,			&
+		doElems(:),connTab(:,:)
 		real(8) :: reVals(:),noVerts(:,:)
 		character(*),parameter :: objdir = "../obj/",				&
 								  resfile = objdir//"res.vtk"
@@ -104,6 +105,12 @@ module postproc
 		do i=1,nElems
 			write(fid,'(i4)')tetType
 		end do
+		if(nDoms.gt.1) then
+			write(fid,'(a,2x,i8)')"CELL_DATA",nElems
+			write(fid,'(a,2x,i2)')"FIELD FieldData", 1
+			write(fid,'(a,2x,i2,2x,i8,2x,a)')"Material",1,nElems,"int"
+			write(fid,'(5(i4,2x))')doElems-1
+		end if
 		write(fid,'(a)')""
 		write(fid,'(a,2x,i8)')"POINT_DATA ",nNodes
 		write(fid,'(a)')"SCALARS temperature double"

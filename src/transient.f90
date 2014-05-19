@@ -2,6 +2,7 @@ module transient
 
 	use assembly
 	use solver
+	use postproc
 
 	implicit none
 	contains
@@ -36,31 +37,33 @@ module transient
 !-------------------------------------------------------------------
 
 	subroutine transientsolve(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,	&
-	useRK,syInit,noVerts)
-		integer :: iaSt(:),jaSt(:),iaCp(:),jaCp(:)
+	useRK,syInit,noVerts,connTab,nDoms,doElems)
+		integer :: nDoms,iaSt(:),jaSt(:),iaCp(:),jaCp(:),doElems(:),&
+		connTab(:,:)
 		real(8) :: sySt(:),syCp(:),sySrc(:),syInit(:),noverts(:,:)
 		logical :: useRK
 
 		if(useRK) then
 			call transientRK(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,	&
-			syInit,noVerts)
+			syInit,noVerts,connTab,nDoms,doElems)
 		else
 			call transientFD(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,	&
-			syInit,noVerts)
+			syInit,noVerts,connTab,nDoms,doElems)
 		end if
 	end subroutine transientsolve
 
 	subroutine transientFD(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,		&
-	syInit,noVerts)
+	syInit,noVerts,connTab,nDoms,doElems)
 		integer,parameter :: trfileno=888
-		integer :: i,j,fno,n,nv,ntstep,iter,iaSt(:),jaSt(:),iaCp(:),&
-		jaCp(:)
+		integer :: i,j,fno,n,nv,ntstep,nDoms,iter,iaSt(:),jaSt(:),	&
+		iaCp(:),jaCp(:),doElems(:),connTab(:,:)
 		real(8) :: theta,tstep,tfinal,sySt(:),syCp(:),sySrc(:),		&
 		syInit(:),noVerts(:,:)
 		real(8),allocatable :: CKLhs(:),CKRhs(:),FRhs(:),Tnew(:),	&
 		kTRhs(:),initGuess(:)
-		character(*),parameter :: objdir="../obj/",ftr="trans.out"
-		character(6) :: fname
+		character(*),parameter :: objdir="../obj/",fres="res",		&
+		fext=".vtk"
+		character(len=100) :: fName,sysCall
 
 		n = size(sySrc,1)
 		allocate(FRhs(n))
@@ -70,7 +73,7 @@ module transient
 		allocate(CKLhs(nv))
 		allocate(CKRhs(nv))
 
-		tstep = 0.0001d0
+		tstep = 0.001d0
 		tfinal= 2.d0
 		ntstep = tfinal/tstep + 1
 		theta = 1.d0
@@ -78,7 +81,6 @@ module transient
 		CKRhs = syCp - (1.d0-theta)*tstep*sySt
 		initGuess = 0.d0
 
-		open(trfileno,file=objdir//ftr)
 		do i=1,ntstep
 			FRhs = theta*sySrc + (1.d0-theta)*sySrc
 			call mkl_dcsrgemv("N",n,CKRhs,iaSt,jaSt,syInit,kTRhs)
@@ -87,25 +89,38 @@ module transient
 			Tnew,iter)
 			syInit = Tnew
 			deallocate(Tnew)
-			open(trfileno,file=objdir//ftr)
-			do j=1,n
-				write(trfileno,'(3(f9.4,2x),f9.4)') noVerts(j,:),	&
-				syInit(j)
-			end do
-			close(trfileno)
+!			open(trfileno,file=objdir//ftr)
+!			do j=1,n
+!				write(trfileno,'(3(f9.4,2x),f9.4)') noVerts(j,:),	&
+!				syInit(j)
+!			end do
+!			close(trfileno)
+			if(mod(i,10).eq.0) then
+				fno = (i+1)/10
+				call writeresultsvtk(noVerts,connTab,nDoms,doElems,		&
+				syInit)
+				write(fName,*) fno
+				write(fName,*) objdir//fres//trim(adjustl(fName))//fext
+				write(sysCall,*)"mv "//objdir//fres//fext//" "//trim(adjustl(fName))
+				write(*,*) sysCall
+				call system(sysCall)
+			end if
 		end do
 		
 	end subroutine transientFD
 
 	subroutine transientRK(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,		&
-	syInit,noVerts)
+	syInit,noVerts,connTab,nDoms,doElems)
 		integer,parameter :: trfileno=888
-		integer :: i,j,k,fno,n,ntstep,iaSt(:),jaSt(:),iaCp(:),jaCp(:)
+		integer :: i,j,k,n,ntstep,nDoms,iaSt(:),jaSt(:),iaCp(:),	&
+		jaCp(:),doElems(:),connTab(:,:)
 		real(8) :: tstep,tfinal,sySt(:),syCp(:),sySrc(:),syInit(:),	&
 		noVerts(:,:)
 		real(8),allocatable :: kTprod(:),rhs(:),diffT(:),newT(:),	&
 		k1(:),k2(:),k3(:),k4(:)
-		character(*),parameter :: objdir="../obj/",ftr="trans.out"
+		character(*),parameter :: objdir="../obj/",fres="res",		&
+		fext=".vtk"
+		character(len=100) :: fName,sysCall
 
 		n = size(sySrc,1)
 		allocate(kTprod(n))
@@ -137,12 +152,21 @@ module transient
 			if(allocated(k2)) deallocate(k2)
 			if(allocated(k3)) deallocate(k3)
 			if(allocated(k4)) deallocate(k4)
-			open(trfileno,file=objdir//ftr)
-			do j=1,n
-				write(trfileno,'(3(f9.4,2x),f9.4)') noVerts(j,:),	&
-				syInit(j)
-			end do
-			close(trfileno)
+			call writeresultsvtk(noVerts,connTab,nDoms,doElems,		&
+			syInit)
+			write(fName,*) i
+			write(fName,*) objdir//fres//trim(adjustl(fName))//fext
+			write(sysCall,*)"mv "//objdir//fres//fext//" "//trim(adjustl(fName))
+			write(*,*) sysCall
+			call system(sysCall)
+
+!			open(trfileno,file=objdir//ftr)
+!			do j=1,n
+!				write(trfileno,'(3(f9.4,2x),f9.4)') noVerts(j,:),	&
+!				syInit(j)
+!			end do
+!			close(trfileno)
+
 		end do
 
 	end subroutine transientRK
