@@ -435,6 +435,7 @@ module tracing
 		end if
 		
 		if (RT_setup .eq. 'tomo') then
+		    write(*,*) emSurf(-tetra%neighbors(ray%faceID,2))%name
 			call RayAbsorbing(ray, tetra, 1.0_dp)
 			return
 		end if

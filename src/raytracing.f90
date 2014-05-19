@@ -35,9 +35,7 @@ program raytracing
     
     ! just some output
     open(unit=101, file=objFolder//"absorbed.res", action='write',status='new')   
-    do i = 1,size(absorbed)
-	    if (absorbed(i) /= 0.0_dp) write(101,'(i8,1x,e14.6)') i, absorbed(i)
-    end do
+	write(101,'(e14.6)') (absorbed(i), i =1, size(absorbed))
     close(unit=101)
 !     
 !     write(*,*) "fraction of power absorbed:", sum(absorbed)/Etotal

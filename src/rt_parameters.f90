@@ -27,6 +27,7 @@ module rt_parameters
         real(dp)                             :: totalarea ! totalarea of surface
         integer, dimension(:,:), allocatable :: elemData ! (:,1) number of tetra-element      
                                                          ! (:,2) face of tetra-element which is on the surface
+        integer                              :: originalID ! id used for tetraeder connections                                                 
     end type
     
     type :: rayContainer  ! contains information on the traced ray

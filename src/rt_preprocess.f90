@@ -130,7 +130,7 @@ module pre_process
         ! read surface information
         allocate(emSurf(size(emSurfNames)), stat=alloc_status)
         call check_alloc_error(alloc_status, "ems array")
-        k = 0
+        k = 1
 
         do i = 1,nSurface
     
@@ -162,7 +162,11 @@ module pre_process
             
             ! if the surface is a emission surface
             if (any(surfName == emSurfNames)) then
-                k = k + 1
+             
+		        ! remember id of emission surface
+                emSurf(k)%originalID = i
+                
+                ! allocate data
                 allocate(emSurf(k)%area(nElem), stat=alloc_status)
                 call check_alloc_error(alloc_status, "ems(k)%area array")
                 allocate(emSurf(k)%elemData(nElem,2), stat=alloc_status)
@@ -172,7 +176,11 @@ module pre_process
                 emSurf(k)%name = surfName
                 call CreateEmissionSurf(surfData, emSurf(k))
                 
+                ! some output
                 write(*,'(1x,a20,1x,e14.6)') surfName, emSurf(k)%totalarea
+                
+                ! increase counter
+                k = k + 1
                 
             end if
             
@@ -552,6 +560,7 @@ module pre_process
                 call check_io_error(write_error,"writing emission surface data",82)
             end do
             write(82,'(e14.6)') emSurf(n)%totalarea
+            write(82,'(e14.6)') emSurf(n)%originalID
         end do    
         
         ! close file
@@ -610,6 +619,7 @@ module pre_process
                 call check_io_error(read_error,"writing emission surface data",83)
             end do
             read(83,'(e14.6)') emSurf(n)%totalarea
+            read(83,'(e14.6)') emSurf(n)%originalID
         end do    
         
         ! close file
