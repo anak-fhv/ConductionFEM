@@ -38,6 +38,6 @@ program raytracing
 	write(101,'(e14.6)') (absorbed(i), i =1, size(absorbed))
     close(unit=101)
 !     
-!     write(*,*) "fraction of power absorbed:", sum(absorbed)/Etotal
+    write(*,*) "power absorbed:", sum(absorbed)
     
 end program raytracing 
