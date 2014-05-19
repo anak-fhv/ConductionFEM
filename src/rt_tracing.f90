@@ -4,94 +4,97 @@
 
 module tracing
 
-    use rt_funcs
-    use math_funs
-    use helper_functions
+	use rt_elements
+    use rt_helper
     
     implicit none
     
     contains
     
-    subroutine start_tracing(tetraData, vertices, ems, file_name, nrays)
+    ! wrapper routine and does perform initialization of fields, output files, etc.
+    subroutine start_tracing
     
-		type(tetraElement), intent(inout)      :: tetraData(:)
-        real(dp), intent(inout)                :: vertices(:,:)
-        type(emissionSurface), intent(inout)   :: ems(:)
-        character(len=*), intent(in)           :: file_name 
-        integer, intent(in)                    :: nrays
-        type(rayContainer)                     :: ray
-        real(dp) :: t1, t2, dummy
-        integer :: io_error, write_error, k, counter = 0
-        character(len=100) :: resFname, leaveFname
-        
-        ! initialize random generator
-        dummy = myRandom(2903)
+        type(rayContainer) :: ray
+        real(dp)           :: t1, t2
+        integer            :: io_error, write_error, k, alloc_status
+        character(len=100) :: leaveFname, d_file1, d_file2, tmp 
         
         ! create file for output
-        ! file containing absorbing location
-        resFname = objFolder//trim(file_name)//".res"
-        open(unit=81, file=resFname, action='write', status='replace', iostat=io_error)       
-        call check_io_error(io_error,"creating file for results 1",81)
-        write(81,'(1x,a8,4(1x,a14))',iostat=write_error) "tetraID", "x", "y", "z", "absorbed"
-        call check_io_error(write_error,"writing header results 1",81)
-        close(unit=81, iostat=io_error)
-        call check_io_error(io_error,"closing file for results 1",81)
-        
         ! file containing leaving enclosure location
-        leaveFname = objFolder//trim(file_name)//"-leaving.res"
+        leaveFname = objFolder//trim(data_fname)//"-leaving.res"
         open(unit=83, file=leaveFname, action='write', status='replace', iostat=io_error)       
         call check_io_error(io_error,"creating file for results 2",83)
-        write(83,'(1x,a8,4(1x,a14))',iostat=write_error) "loc x", "loc y", "loc z", "dir x", "dir y", "dir z", "power" 
+        write(83,'(8(1x,a14))',iostat=write_error) "loc x", "loc y", "loc z", "dir x", "dir y", "dir z", "power", "wavelength" 
         call check_io_error(write_error,"writing header results 2",83)
         close(unit=83, iostat=io_error)
         call check_io_error(io_error,"closing file for results 2",83)
         
         ! additional debugging files
-        open(unit=82, file=objFolder//trim(file_name)//"-initrayloc.res", action='write', status='replace', iostat=io_error)       
+        ! distribution of initial locations
+        d_file1 = objFolder//trim(data_fname)//"-initrayloc.res" 
+        open(unit=82, file=d_file1, action='write', status='replace', iostat=io_error)       
         call check_io_error(io_error,"creating debug-file 1",82)
-        write(82,'(6(a14))',iostat=write_error) "x", "y", "z", "dx", "dy","dz"
+        write(82,'(7(1x,a14))',iostat=write_error) "x", "y", "z", "dx", "dy","dz", "power"
         call check_io_error(write_error,"writing debug-file 1 header",82)
         close(unit=82, iostat=io_error)
         call check_io_error(io_error,"closing debug-file 1",82)
+             
+        ! initialize vector for absorption
+        allocate(absorbed(size(vertices,1)), stat=alloc_status)
+        call check_alloc_error(alloc_status, "absorbed vector")
+        absorbed = 0.0_dp
         
-        ! do raytracing            
-        ! in case of several emission surface a way of selecting a surface must be chosen     
-	    call cpu_time(t1)
+        ! do raytracing          
+        call cpu_time(t1)
 	    do k = 1,nrays
-	        call CreateRay(tetraData, vertices, ems(1), ray, file_name)
-	        call TraceRay(tetraData, vertices, ray, resFname, leaveFname)
-	        if (ray%faceID == -1) counter = counter+1
+		    
+		    if (k <= nRayPaths) then
+			    ! file for tracing single ray (should be commented if large number of rays are considered)
+			    write(tmp,'(i5.5)') k
+			    d_file2 = objFolder//trim(data_fname)//"-raydata"//trim(tmp)//".res" 
+		        open(unit=81, file=d_file2, action='write', status='replace', iostat=io_error)       
+		        call check_io_error(io_error,"creating ray-tracing file",81)
+		        write(81,'(7(1x,a14))',iostat=write_error) "x", "y", "z", "dx", "dy","dz","power" 
+		        call check_io_error(write_error,"writing ray-tracing file header",81)
+	            close(unit=81, iostat=io_error)
+		        call check_io_error(io_error,"closing ray-tracing file",81)
+		    end if
+		    
+		    ! create ray
+	        call CreateRay(emSurf(emsIDfun()), ray, d_file1)
+
+	        ! assign energy to a ray and trace it
+            if (k <= nRayPaths) call WriteRayData(ray, d_file2)
+	        call TraceRay(ray, leaveFname, d_file2, k<=nRayPaths)
+	        
 	    end do
 	    call cpu_time(t2)
     
 	    write(*,*) "run time raytracing: ", t2-t1
-	    write(*,*) "precentage of escaped rays:", real(counter)/real(nrays)
     
     end subroutine start_tracing
+    
     
     ! given an emission surface, the following subroutine performs the following steps:
     ! 1. select a face on the emission surface by roulette wheel selection
     ! 2. select a point within the triangular face based on 2 random numbers 
     !    (uses triangle and uniform distribution)
     ! 3. select a random direction    
-    subroutine CreateRay(tetraData, vertices, ems, ray, file_name)
+    subroutine CreateRay(ems, ray, fname)
 
-        type(tetraElement), intent(in)      :: tetraData(:)
-        real(dp), intent(in)                :: vertices(:,:)
-        type(emissionSurface), intent(in)   :: ems
-        type(rayContainer), intent(out)     :: ray
-        character(len=*), intent(in)        :: file_name
-        integer  :: i
-        integer, dimension(1) :: id
-        integer, dimension(3) :: vertIDs 
-        real(dp) :: psi, theta, b, c, d
-        real(dp), dimension(3) :: p1, p2, p3, dir1, dir2, dir21, ds1, ndir
-        real(dp), dimension(3,3) :: M1, M2  
-
-        ! get random tetraeder on the emission surface
-        psi = myRandom(0) 
+        type(emissionSurface), intent(in) :: ems
+        type(rayContainer), intent(out)   :: ray
+        character(len=*), intent(in)      :: fname
+        integer                           :: i
+        integer, dimension(1)             :: id
+        integer, dimension(3)             :: vertIDs 
+        real(dp)                          :: psi, theta, b, c, d, area
+        real(dp), dimension(3)            :: p1, p2, p3, dir1, dir2, dir21, ds1, ndir 
         
+        
+!         write(*,*) ems%name
         ! decision whether to start at the beginning or end of the list (just for speed)
+        psi = myRandom(0)
         if (psi > 0.5) then
             do i = size(ems%area)-1,1,-1
                 if (ems%area(i) < psi) exit
@@ -108,7 +111,7 @@ module tracing
     
         ! get vertices for the selected face on the surface
         call return_facevertIds(ray%faceID,vertIDs)  
-        call return_coords(tetraData(ray%tetraID), vertices, vertIDs, p1, p2, p3)
+        call return_coords(tetraData(ray%tetraID), vertIDs, p1, p2, p3)
      
         ! find longest side of triangle
         id = maxloc([norm(p2-p1),norm(p3-p1),norm(p2-p3)])        
@@ -158,7 +161,8 @@ module tracing
         end if
     
         ! choose ray direction
-        ndir = cross(dir1,dir2) ! normal vector of triangle face
+        ndir = cross(dir1,dir2)  ! normal vector of triangle face
+        area = 0.5_dp*norm(ndir) ! area of triangle
         ndir = ndir/norm(ndir)
         
         ! check whether normal vector points inwards or outwards
@@ -173,242 +177,372 @@ module tracing
         psi = 2.0_dp*pi*myRandom(0) 	         
         ray%direction = sin(theta)*(cos(psi)*dir1 + sin(psi)*cross(ndir, dir1)) + cos(theta)*ndir
         
-!         dir1 = dir1/b
-!         call RotationMatrix(dir1, ndir, , M1)
-!     
-!         ! second rotation with normal vector as rotation axis
-!         call RotationMatrix(ndir, dir1, , M2)
-!         
-!         ! get final direction
-!         ray%direction = matmul(M2,matmul(M1,ndir))
+        ! power of the ray
+        ! TODO: make it dependent on temperature given on vertices
+        ray%power = raypowerfun(100.0_dp/123.0_dp*(ray%point(3) - 2.0_dp) + 100.0_dp,area)
         
         ! just for checking (could be commented)
-        open(unit=83, file=objFolder//trim(file_name)//"-initrayloc.res", action='write', position='append')  
-        write(83,'(6e14.6)') ray%point, ray%direction
+        open(unit=83, file=fname, action='write', position='append')  
+        write(83,'(7(1x,e14.6))') ray%point, ray%direction, ray%power
         close(unit=83)         
         
     end subroutine CreateRay
     
-    ! main raytracing routine
-    subroutine TraceRay(tetraData, vertices, ray, resFname, leaveFname)
     
-        type(tetraElement), intent(inout)   :: tetraData(:)
-        real(dp), intent(in)                :: vertices(:,:)
-        type(rayContainer), intent(inout)   :: ray
-        character(len=*), intent(in)        :: resFname, leaveFname
-        real(dp) :: kappa, sigma, beta, omega, length
-        real(dp), dimension(3) :: endpoint
-
-        ! properties of the medium
-        kappa = 10.0_dp
-        sigma = 0.75_dp
+    ! main raytracing routine
+    subroutine TraceRay(ray, leaveFname, rtfname, writeflag)
+    
+        type(rayContainer), intent(inout) :: ray
+        character(len=*), intent(in)      :: leaveFname, rtfname
+        logical, intent(in)               :: writeflag
+        real(dp)                          :: beta, omega, length, tmp
+        integer                           :: cface 
+        type(tetraElement)                :: tetra
         
         ! calculate length of initial ray
+        ! kappa and sigma are defined by module rt_properties
+        ! only necessary in case of participating media
         beta = kappa + sigma        
         omega = sigma/beta
         
-        ! trace ray until it leaves the enclosure or the energy is below a treshold  
-        do 
-	        length = 1.0_dp/beta*log(1/myRandom(0))
-	        endpoint = ray%point + length*ray%direction
-            
-            ! trace path 
-            do while (ray%length < length)       
-		        call FindNextTetra(vertices,tetraData,ray)
-		        
-		        ! point on boundary surface
-	            if (ray%faceID == -1) then
-! 		            write(*,*) "ray is escaped"
-			        ! do boundary handling
-			        return
-			    end if
+        ! trace ray until the energy is below a treshold  
+        tmp = ray%power  ! initial ray power
+        length = GetPathLength() ! path length (only meaningful for participating media)
+        do while (ray%power > 0.0001_dp*tmp)
+        
+	        ! current tetra
+            tetra = tetraData(ray%tetraID)       
+		    cface = ray%faceID 
+		        		        
+		    ! find next face within same tetra
+		    call FindNextFace(tetra,ray,cface)
+            if (writeflag) call WriteRayData(ray, rtfname)
+                
+            ! check if point is on a boundary surface
+	        if (tetra%neighbors(ray%faceID,2) < 0) then
+	        
+	            call BoundaryHandling(ray, tetra, leaveFname)
+	            
+	            ! write ray path data	            
+	            if (writeflag) call WriteRayData(ray, rtfname)
+	            
+	            ! reset ray%length and get new mean free path
+                ray%length = 0.0_dp
+				length = GetPathLength()
+				
+            elseif ((RT_setup .eq. 'led') .and. (ray%length >= length) ) then 
 			    
-            end do
+			    ! setup specific for 'led'    
+				! check if mean-free path length is reached
+				
+			    ! set ray point to point where interaction happens
+			    ray%point = ray%point + (length - ray%length)*ray%direction
             
-!             write(*,*) "rp-end:", ray%point
-!             write(*,*)
-            
-            ! absorb power and scatter ray
-            if (ray%power > 0.0001_dp) then
-	            call RayAbsorbing(tetraData(ray%tetraID),ray%tetraID,endpoint,(1.0_dp-omega)*ray%power,resFname)
-	        	call RayScatter(ray, tetraData(ray%tetraID), vertices)
-	            ray%power = ray%power*omega
-		        ray%length = 0.0_dp
-            else
-	            call RayAbsorbing(tetraData(ray%tetraID),ray%tetraID,ray%point,ray%power,resFname)
-                return
-            end if
-        end do 
+			    !absorption
+			    call RayAbsorbing(ray, tetra, 1.0_dp-omega)
+	        
+				! scattering
+			    call RayScatter(ray,tetra)
+				! if scattering to a boundary happens
+				if (tetra%neighbors(ray%faceID,2) < 0) then
+				    call BoundaryHandling(ray, tetra, leaveFname)
+				end if
+						
+				! write point on path
+			    if (writeflag) call WriteRayData(ray, rtfname)
+					    
+				! reset ray%length and get new mean free path length
+				ray%length = 0.0_dp
+				length = GetPathLength()	    
+                
+			elseif ((RT_setup .eq. 'tomo') .and. (tetra%domain /= tetraData(tetra%neighbors(ray%faceID,1))%domain)) then  
+			
+				! setup specific for 'tomo'  
+				! check if domain will change
+				
+			    call DomainChange(ray, tetra)
+	            if (writeflag) call WriteRayData(ray, rtfname)
+				
+			else     ! nothing happens just go on with tracing
+			
+				! update ray identifier values
+			    ray%tetraID = tetra%neighbors(ray%faceID,1) ! neighbouring tetra
+			    ray%faceID = tetra%neighbors(ray%faceID,2)  ! face in neighbouring tetra
+				    
+		    end if 			    
+			    			    			    
+        end do                        
+		    
+        ! in case a small amount of power remains, absorb ray completely
+        if (ray%power > 0.0_dp) then
+	        call RayAbsorbing(ray, tetra, 1.0_dp)
+	        if (writeflag) call WriteRayData(ray, rtfname)    
+	    end if        
         
     end subroutine TraceRay
     
-    ! find next tetra Element along ray direction
-    subroutine FindNextTetra(vertices,tetraData,ray)
+    
+    ! find next next face along path in same tetra
+    subroutine FindNextFace(tetra,ray,faceOld)
         
-        type(tetraElement), intent(in)      :: tetraData(:)
-        real(dp), intent(in)                :: vertices(:,:)
-        type(rayContainer), intent(inout)   :: ray
-        real(dp) :: alpha, temp
-        integer  :: f, newFace
-        real(dp), dimension(3) :: rp, v1, v2, nsf 
-        real(dp), dimension(3) :: p1, p2, p3
-        integer, dimension(3)  :: vertIDs
-        
-!         write(*,*) "rp:", ray%point
-!         write(*,*) "rd:", ray%direction
-!         write(*,*) "rt:", ray%tetraID
-!         write(*,*) "rf:", ray%faceID        
-!         ! test whether point is indeed in triangle
-!         call return_facevertIds(ray%faceID,vertIDs)  
-!         call return_coords(tetraData(ray%tetraID), vertices, vertIDs, p1, p2, p3)
-!         if (PointInside(p1,p2,p3,ray%point) .eqv. .false.) then
-!             write(*,*) "Waypoint not in face!"
-!             stop
-!         end if
-        
-        alpha = 100.0_dp  ! some large initial value for alpha
+        type(tetraElement), intent(in)    :: tetra
+        type(rayContainer), intent(inout) :: ray
+        integer, intent(in)               :: faceOld
+        real(dp), dimension(3)            :: p1, p2, p3, nsf
+        integer, dimension(3)             :: vertIDs
+        real(dp)                          :: length, minlength
+	    integer                           :: f
+                        
+        ! get new point on face of tetraeder
+        minlength = 1000.0_dp
         do f = 1,4
-        
-            if (f == ray%faceID) cycle  ! is face where ray is emitted
+            
+            ! if emitted from, cycle if it is the same face
+            if (f == faceOld) cycle  
             
             ! 1 vertex and 2 vectors of current face
             call return_facevertIds(f,vertIDs)
-            call return_coords(tetraData(ray%tetraID), vertices, vertIDs, rp, v1, v2)
-            v1 = v1 - rp ! make a vector with origin rp  
-            v2 = v2 - rp ! make a vector with origin rp
+            call return_coords(tetra, vertIDs, p1, p2, p3)
+            p2 = p2 - p1 ! make a vector with origin at p1  
+            p3 = p3 - p1 ! make a vector with origin at p1
             
             ! normal vector of current face  
-            nsf = cross(v1,v2)
+            nsf = cross(p2,p3)
             nsf = nsf/norm(nsf) 
 
             ! calculate length until intersection
-            temp = (dot_product(nsf,rp) - dot_product(nsf,ray%point))/dot_product(nsf, ray%direction)
-            if (temp < 0) cycle ! length can not be negative
+            length = (dot_product(nsf,p1) - dot_product(nsf,ray%point))/dot_product(nsf, ray%direction)
+            if (length < 0) cycle ! length can not be negative
             
             ! check if temp is the shortest length so far
             ! if true, current face is the face the ray will intersect
-            if (temp < alpha) then
-                alpha = temp
-                newFace = f
+            if (length < minlength) then
+                minlength = length
+                ray%faceID = f
             end if
             
         end do
         
-        ! update ray container
-        ray%length = ray%length + alpha
-        ray%point = ray%point + alpha*ray%direction
-        
+        ! update some raycontainer elements
+        ray%point = ray%point + minlength*ray%direction
+        ray%length = ray%length + minlength            
+    
         ! test whether point is indeed in triangle
-        call return_facevertIds(newFace,vertIDs)  
-        call return_coords(tetraData(ray%tetraID), vertices, vertIDs, p1, p2, p3)
+        call return_facevertIds(ray%faceID,vertIDs)  
+        call return_coords(tetra, vertIDs, p1, p2, p3)
         if (PointInside(p1,p2,p3,ray%point) .eqv. .false.) then
             write(*,*) "Waypoint not in face!"
+            write(*,*) "rp:", ray%point
+            write(*,*) "rt:", ray%tetraID
+            write(*,*) "rf:", ray%faceID
+            write(*,*) "rd:", ray%direction
+            write(*,*) "alpha:", minlength
+            write(*,*) "p1:", p1
+            write(*,*) "p2:", p2
+            write(*,*) "p3:", p3
+            write(*,*) "fold:", faceOld
+            
+            call return_facevertIds(faceOld,vertIDs)  
+            call return_coords(tetra, vertIDs, p1, p2, p3)
+            
+            write(*,*) "p4:", p1
+            write(*,*) "p5:", p2
+            write(*,*) "p6:", p3
+            
             stop
         end if
-        
-        ray%faceID = tetraData(ray%tetraID)%neighbors(newFace,2)  
-        ray%tetraID = tetraData(ray%tetraID)%neighbors(newFace,1)
-        
-!         write(*,*) "rp-update:", ray%point
-!         write(*,*) "rl-update:", ray%length
-!         write(*,*) "rt-update:", ray%tetraID
-!         write(*,*) "rf-update:", ray%faceID 
-!         write(*,*)
     
-    end subroutine
+    end subroutine FindNextFace
+        
         
     ! write out location and intensity of ray absorbed
-    subroutine RayAbsorbing(tetra, id, point, power, resFname)
-    
-	    type(tetraElement), intent(inout)  :: tetra
-	    integer, intent(in)                :: id
-	    real(dp), dimension(3), intent(in) :: point
-	    real(dp), intent(in)               :: power
-	    character(len=*), intent(in)       :: resFname
-	    
-	    tetra%absorbed = tetra%absorbed + power
-	    
-	    open(unit=84, file=resFname, action='write', position='append')  
-	    write(84,'(1x,i8,1x,3(e14.6,1x),e14.6)') id, point, tetra%absorbed
-        close(unit=84)
-        
-    end subroutine RayAbsorbing
-    
-    ! perform scattering (so far isotropic only)
-    subroutine RayScatter(ray, tetra, vertices)
+    subroutine RayAbsorbing(ray, tetra, frac)
     
 	    type(rayContainer), intent(inout) :: ray
 	    type(tetraElement), intent(in)    :: tetra
-	    real(dp), intent(in)              :: vertices(:,:)
-	    real(dp) :: psi, theta
-	    real(dp), dimension(3) :: v1, v2, normal, point
-	    integer :: tmp
+	    real(dp), intent(in)              :: frac
+	    real(dp)                          :: t1, t2, t3
 	    
-	    ! isotropic case
-	    theta = acos(1.0_dp-2.0_dp*myRandom(0))
-	    psi = 2.0_dp*pi*myRandom(0)
+	    ! do some shape function magic
+	    call Cartesian2Tetra(ray%point, tetra, t1, t2, t3)
+	    
+	    ! save absorption values
+	    absorbed(tetra%vertexIds(1)) = absorbed(tetra%vertexIds(1)) + t1*frac*ray%power
+        absorbed(tetra%vertexIds(2)) = absorbed(tetra%vertexIds(2)) + t2*frac*ray%power
+        absorbed(tetra%vertexIds(3)) = absorbed(tetra%vertexIds(3)) + t3*frac*ray%power
+        absorbed(tetra%vertexIds(4)) = absorbed(tetra%vertexIds(4)) + max((1-t1-t2-t3),0.0_dp)*frac*ray%power
+        
+        ! update raypower
+        ray%power = (1-frac)*ray%power
+!         write(*,'(2(e14.6,1x),4(i8,1x))') ray%power, frac, tetra%vertexIds(1), tetra%vertexIds(2),tetra%vertexIds(3),tetra%vertexIds(4)
+        
+    end subroutine RayAbsorbing
+    
+    
+    ! perform scattering (so far isotropic only)
+    subroutine RayScatter(ray, tetra)
+    
+	    type(rayContainer), intent(inout) :: ray
+	    type(tetraElement), intent(in)    :: tetra
+	    real(dp)                          :: psi, theta
+	    real(dp), dimension(3)            :: v1
+	    
+	    ! get random value for angle from phase function
+	    ! phase function is defined in module rt_properties
+	    call PhaseFunction(theta, psi)
 		
 ! 		write(*,*) "theta:", theta
 ! 		write(*,*) "psi:", psi
 		
+		! determine new direction
 		! get 2 perpendicular vectors, such that the old direction is the normal vector
 		! for the plane spanned by the 2 new vectors
-		v1 = cross(eoshift(ray%direction,1),ray%direction)
+		v1 = cross(eoshift(ray%direction,1),ray%direction) !TODO: this seems like a "good" hack
 		v1 = v1/norm(v1)	         
-        v2 = sin(theta)*(cos(psi)*v1 + sin(psi)*cross(ray%direction, v1)) + cos(theta)*ray%direction
+        ray%direction = sin(theta)*(cos(psi)*v1 + sin(psi)*cross(ray%direction, v1)) + cos(theta)*ray%direction
         
-        ! check if tetraeder has to change
-        ! reason: if new direction points outwrad of current tetraeder
-        call return_surfNormal(tetra, ray%faceID, vertices, normal, point) 
-        if (dot_product(normal,ray%direction)*dot_product(normal,v2) < 0) then
-		    tmp = tetra%neighbors(ray%faceID,2)  
-			ray%tetraID = tetra%neighbors(ray%faceID,1)
-            ray%faceID = tmp
-        end if
-        ray%direction = v2
+        ! find intersection point with face of current tetraeder
+        call FindNextFace(tetra,ray,-1)
         
-!         write(*,*) "rd-new2:", v2
-!         write(*,*)
+        ! output shoul be point on a tetraeder face with a direction inwards the tetra
+        ray%tetraID = tetra%neighbors(ray%faceID,1) ! neighbouring tetra
+	    ray%faceID = tetra%neighbors(ray%faceID,2)  ! face in neighbouring tetra
+        
+        ! some test of sanity?
         
     end subroutine RayScatter
+
+    
+    ! handle boundary
+    ! either totally reflects or transmits ray depending on incoming direction
+    ! and comparision with random number
+    subroutine BoundaryHandling(ray, tetra, leaveFname)
+    
+	    type(rayContainer), intent(inout) :: ray
+	    type(tetraElement), intent(in)    :: tetra
+	    character(len=*), intent(in)      :: leaveFname
+	    real(dp), dimension(3)            :: nsf
+	    real(dp)                          :: cosAngle, rho, theta1, theta2, ratio
+	    
+	    ! TODO: 1. check on which boundary the point leaves the enclosure,
+	    !         this might requires different refraction number
+	    !       2. perform multiple refraction? (could be done by post-processing)
+	    
+	    ! some sanity check
+	    if (ray%faceID < 0 ) then
+		    write(*,*) " negative face id, where are you coming from?"
+		    stop
+		end if
+		
+		if (RT_setup .eq. 'tomo') then
+		    write(*,*) emSurf(-tetra%neighbors(ray%faceID,2))%name
+			call RayAbsorbing(ray, tetra, 1.0_dp)
+			return
+		end if
+		
+		! refraction indices (should come from outside)
+		! refraction indices are defined by module rt_properties
+		if (tetra%neighbors(ray%faceID,2) < 0)  then
+			ratio = refracIndices(tetra%domain+1)/refracIndices(1)
+	    else
+		    ratio = refracIndices(tetra%domain+1)/refracIndices(tetraData(tetra%neighbors(ray%faceID,1))%domain + 1)
+		end if
+	    
+	    ! get incident angle
+	    call IncidentAngle(tetra, ray, cosAngle, nsf)
         
-    ! calculate refraction with Snell's law
-    subroutine SnellsLaw(incident, n1, n2, nsf, reflect, refract)
+        ! check for critical angle  
+        if (ratio*sin(acos(cosAngle)) > 1) then
+            ! total reflection
+	        ray%direction = ray%direction + 2*cosAngle*nsf 
+	    else
+	        ! angles from Snell's law
+		    theta1 = acos(cosAngle)
+		    theta2 = asin(ratio*sin(theta1))
+	        
+	        ! Fresnel's relation
+		    rho = 0.5_dp*(tan(theta1-theta2)**2/tan(theta1+theta2)**2 + sin(theta1-theta2)**2/sin(theta1+theta2)**2)
+	        
+	        ! decide wheter everything is transmitted or reflected
+	        if (myRandom(0) < rho) then
+		        ray%direction = ray%direction + 2*cosAngle*nsf  ! ray is reflected
+		    else
+		        ! ray is transmitted
+			    ray%direction = ratio*ray%direction + (ratio*cosAngle - sqrt(1-ratio**2*(1-cosAngle**2)))*nsf 
+	            
+	            ! write out ray data
+	            open(unit=85, file=leaveFname, action='write', position='append')  
+		        write(85,'(8(1x,e14.6))') ray%point, ray%direction, ray%power, ray%wavelength
+	            close(unit=85)
+	            
+	            ! update ray container
+	            ray%power = 0.0_dp
+	        end if
+	        
+        end if
+	           
+	end subroutine BoundaryHandling
+	
+	
+	! actions and changes in case a change of domain occurs
+	subroutine DomainChange(ray, tetra)
+
+		type(rayContainer), intent(inout) :: ray
+		type(tetraElement), intent(in)    :: tetra
+		real(dp), dimension(3)            :: nsf
+		real(dp)                          :: cosAngle, reflectivity
+	
+		! get incident angle
+		call IncidentAngle(tetra, ray, cosAngle, nsf)
         
-        real(dp), intent(in)                  :: n1, n2   ! refractive indices
-        real(dp), dimension(3), intent(in)    :: incident ! incident direction 
-        real(dp), dimension(3), intent(inout) :: nsf      ! normal vector
-        real(dp), dimension(3), intent(out)   :: refract, reflect ! refraction and reflection direction
-        real(dp) :: cosAngle, ratio
-        
-        cosAngle = -dot_product(incident,nsf)
-        if (cosAngle < 0) then
+        ! compare with random if refelction or absorption occurs
+        if (myRandom(0) <= 1.0_dp - 1.5_dp*alpha*cosAngle) then
+	        ! ray is reflected
+	        ray%direction = ray%direction + 2*cosAngle*nsf  
+	    else
+		    ! ray is absorbed
+		    ! TODO: case of partial absorption
+		    call RayAbsorbing(ray, tetra, 1.0_dp)
+		end if
+	
+	end subroutine DomainChange
+	
+	
+	! write raydata
+	subroutine WriteRayData(ray, fname)
+	
+		type(rayContainer), intent(in) :: ray
+		character(len=*), intent(in)   :: fname
+		
+		open(unit=81, file=fname, action='write',  position='append') 
+	    write(81,'(7(1x,e14.6))') ray%point, ray%direction, ray%power
+	    close(unit=81)
+	        
+	end subroutine WriteRayData
+	
+	
+	! get angle of incident
+	! return cosine of incident angle and normal vector pointing inside the
+	! current tetra-element
+	subroutine IncidentAngle(tetra, ray, cosAngle, nsf)
+	
+		type(tetraElement), intent(in)      :: tetra
+		type(rayContainer), intent(in)      :: ray
+		real(dp), intent(out)               :: cosAngle
+		real(dp), dimension(3), intent(out) :: nsf
+		real(dp), dimension(3)              :: dummy
+	
+		! get surface normal of current face
+	    call return_surfNormal(tetra, ray%faceID, nsf, dummy)
+	    
+	    ! cosine of angle between surface normal and incident direction
+        ! must be positive (else normal is pointing outwards and must be used as negative)
+        cosAngle = -dot_product(ray%direction,nsf)
+        if (cosAngle < 0.0_dp) then
             cosAngle = -cosAngle
             nsf = -nsf
         end if
-        
-        reflect = incident + 2*cosAngle*nsf
-        
-        ratio = n1/n2
-        refract = ratio*incident + ratio*cosAngle*nsf - sqrt(1 - ratio**2*(1-cosAngle**2))*nsf
-   end subroutine SnellsLaw
-    
-    ! handle boundary
-    subroutine BoundaryHandling(ray, tetra, vertices, leaveFname)
-    
-	    type(rayContainer), intent(in) :: ray
-	    type(tetraElement), intent(in) :: tetra
-	    real(dp), intent(in)           :: vertices(:,:)
-	    character(len=*), intent(in)   :: leaveFname
-	    real(dp), dimension(3) :: nsf, point, reflect, refract
-	    
-	    call return_surfNormal(tetra, ray%faceID, vertices, nsf, point)
-	    call SnellsLaw(ray%direction, 1.9_dp, 1.5_dp, nsf, reflect, refract)
-	    call SnellsLaw(refract, 1.9_dp, 1.5_dp, nsf, reflect, refract)
-	    
-	    open(unit=85, file=leaveFname, action='write', position='append')  
-	    write(85,'(1x,i8,1x,3(e14.6,1x),e14.6)') ray%point, refract, ray%power
-        close(unit=85)
-	    
-	end subroutine BoundaryHandling
+	
+	end subroutine IncidentAngle
+	
 end module tracing

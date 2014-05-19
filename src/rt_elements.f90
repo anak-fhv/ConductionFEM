@@ -1,11 +1,8 @@
-! Raytracing element property module module
-! author: Steffen Finck
-! contact: steffen.finck@fhv.at
+! Raytracing elements operation module
 
-module rt_funcs
+module rt_elements
 
-    use rt_types
-    use math_funs
+    use rt_math 
     implicit none
     
     contains
@@ -47,18 +44,17 @@ module rt_funcs
             case(4)
                 vertIds = [1,3,4]
             case default
-                write(*,*) "Unknown face number!"
+                write(*,*) "Unknown face number!", face
                 stop
        end select
        
     end subroutine return_facevertIds    
     
     ! returns the points (in x,y,z coordinates) of a tetraeder face
-    subroutine return_coords(tetra, vertices, vertIDs, p1, p2, p3)
+    subroutine return_coords(tetra, vertIDs, p1, p2, p3)
     
 	    type(tetraElement), intent(in)      :: tetra
 	    integer, intent(in), dimension(3)   :: vertIDs
-	    real(dp), intent(in)                :: vertices(:,:)
 	    real(dp), dimension(3), intent(out) :: p1, p2, p3
 	    
 	    p1 = vertices(tetra%vertexIds(vertIDs(1)),:)
@@ -83,7 +79,7 @@ module rt_funcs
         bc(1) = dot_product(na,nx)/dpna
         bc(2) = dot_product(na,ny)/dpna
         bc(3) = dot_product(na,nz)/dpna
-        PointInside = (all(bc > 0e0_dp) .and. (abs(sum(bc) - 1) <= 1e-14_dp))
+        PointInside = (all(bc > 0e0_dp) .and. (abs(sum(bc) - 1) <= 1e-13_dp))
         
         if (PointInside .eqv. .false.) then
 	        write(*,*) bc
@@ -93,19 +89,81 @@ module rt_funcs
     end function
     
 	! return surface normal and reference point (one of thee vertices)
-	subroutine return_surfNormal(tetra, face, vertices, normal, point)
+	subroutine return_surfNormal(tetra, face, normal, point)
 	
 		type(tetraElement), intent(in)      :: tetra
 		integer, intent(in)                 :: face
-		real(dp), intent(in)                :: vertices(:,:)
 		real(dp), dimension(3), intent(out) :: normal, point
 		real(dp), dimension(3) :: p2, p3
 		integer, dimension(3) :: vertIDs
+! 		integer :: tmpface
 		
+! 		tmpface = get_facenumber(face,tetra)
 		call return_facevertIds(face,vertIDs)  
-        call return_coords(tetra, vertices, vertIDs, point, p2, p3)
+        call return_coords(tetra, vertIDs, point, p2, p3)
         normal = cross(p2-point,p3-point)
+        normal = normal/norm(normal)
 	
 	end subroutine return_surfNormal
 	
-end module rt_funcs
+	! transform cartesian coordiantes into tetrahedral coordinates
+	subroutine Cartesian2Tetra(point, tetra, t1, t2, t3)
+	
+		real(dp), dimension(3), intent(in) :: point
+		type(tetraElement), intent(in)     :: tetra
+		real(dp), intent(out)              :: t1,t2,t3
+		real(dp), dimension(3,4)           :: corners
+		integer                            :: i, j
+		real(dp), dimension(3,3)           :: M, Minv
+		real(dp)                           :: det
+		
+		! get tetraeder vertex points
+		forall(i = 1:4) corners(:,i) = vertices(tetra%vertexIds(i),:)
+		
+		! assemble matrix describing transformation from tetra-coords to cartesian-coords
+	    do  i = 1,3
+		    do j = 1,3
+			    M(j,i) = corners(j,i) - corners(j,4) 
+			end do
+	    end do
+	    
+	    ! determine determinante
+	    det = dot_product(M(:,1), cross(M(:,2), M(:,3))) 
+	     
+	    ! get inverse
+	    Minv(1,1) = M(2,2)*M(3,3) - M(2,3)*M(3,2)
+	    Minv(2,1) = M(2,3)*M(3,1) - M(2,1)*M(3,3)
+	    Minv(3,1) = M(2,1)*M(3,2) - M(2,2)*M(3,1)
+	    Minv(1,2) = M(1,3)*M(3,2) - M(1,2)*M(3,3)
+	    Minv(2,2) = M(1,1)*M(3,3) - M(1,3)*M(3,1)
+	    Minv(3,2) = M(1,2)*M(3,1) - M(1,1)*M(3,2)
+	    Minv(1,3) = M(1,2)*M(2,3) - M(1,3)*M(2,2)
+	    Minv(2,3) = M(1,3)*M(2,1) - M(1,1)*M(2,3)
+	    Minv(3,3) = M(1,1)*M(2,2) - M(1,2)*M(2,1)
+	    Minv = Minv/det
+	    
+	    ! get tetrahedral coordinates
+	    t1 = dot_product(Minv(1,:), (point - corners(:,4)))
+	    t2 = dot_product(Minv(2,:), (point - corners(:,4)))
+	    t3 = dot_product(Minv(3,:), (point - corners(:,4))) 
+	    
+	    ! numerics
+	    if (abs(t1) <= 1e-13_dp) t1 = 0
+	    if (abs(t2) <= 1e-13_dp) t2 = 0
+	    if (abs(t3) <= 1e-13_dp) t3 = 0
+	    
+	    ! sanity checks
+	    if ( (t1+t2+t3 > 1.0_dp + 1e-13_dp) .or. (min(t1,t2,t3) < 0) )then
+		      write(*,*) "point not in tetra"
+		      write(*,*) t1, t2, t3
+		      write(*,*) point
+		      write(*,*) corners(:,1)
+	          write(*,*) corners(:,2)
+	          write(*,*) corners(:,3)
+	          write(*,*) corners(:,4)
+	          stop
+	    end if
+	    
+	end subroutine Cartesian2Tetra
+	
+end module rt_elements
