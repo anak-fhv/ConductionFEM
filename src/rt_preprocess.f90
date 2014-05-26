@@ -15,6 +15,7 @@ module pre_process
     subroutine start_preprocessing
     
 		logical :: l
+		integer :: alloc_status, io_error, i
                 
         ! check if file provided by user exists
         ! first check for *.data file (since it is faster)
@@ -36,7 +37,25 @@ module pre_process
             call read_mesh_data(trim(data_fname)//".msh")
 	        call WriteData(trim(data_fname)//".msh")
         end if    
-    
+        
+        ! read additional data files
+        if (RT_setup .eq. 'tomo') then
+            write(*,*)
+            write(*,*) "reading additional data files ..."
+            write(*,*)
+			allocate(temperature(size(vertices,1)), stat=alloc_status)
+		    call check_alloc_error(alloc_status, "temperature array")
+            
+		    open(unit=88, file=dataFolder//"RPC_2d_simple_temp_grad.data", status = 'old', action='read',iostat = io_error)
+		    do i =1,size(vertices,1)
+			    read(88,'(e14.6)') temperature(i)
+            end do
+            close(unit=81)
+		end if
+		
+! 		write(*,*) size(temperature)
+		
+		 
     end subroutine start_preprocessing
     
     ! main routine which perform reading of input data and calls routines for

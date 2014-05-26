@@ -44,6 +44,7 @@ module rt_parameters
     real(dp), dimension(:,:), allocatable            :: vertices  ! filed of all vertices
     type(tetraElement), dimension(:), allocatable    :: tetraData ! type for tetraeder information
     type(emissionSurface), dimension(:), allocatable :: emSurf    ! emission surfaces
+    real(dp), dimension(:), allocatable              :: temperature ! temperature data for tomo-based setup
     
     contains
     ! wrapper for random numbers

@@ -9,7 +9,8 @@ module rt_properties
     character(len=7), parameter      :: objFolder = "../obj/"     ! object folder
     character(len=8), parameter      :: dataFolder = "../data/"   ! data folder
     character(len=20), parameter     :: data_fname = "RPC_2d_128" ! prefix for input data file
-    real(dp), parameter              :: Etotal = 100.0 ! total energy
+!     real(dp), parameter              :: Etotal = 100.0 ! total energy
+    real(dp)                         :: Etotal = 0.0
     real(dp), parameter              :: kappa = 0.3    ! absorption coefficient
     real(dp), parameter              :: sigma = 0.4    ! scattering coefficient
     real(dp), parameter              :: alpha = 0.15    ! hemispherical absorptivity

@@ -88,7 +88,7 @@ module tracing
         integer                           :: i
         integer, dimension(1)             :: id
         integer, dimension(3)             :: vertIDs 
-        real(dp)                          :: psi, theta, area, tc1, tc2
+        real(dp)                          :: psi, theta, area, tc1, tc2, cTemperature
         real(dp), dimension(3)            :: p1, p2, p3, dir1, ndir 
         type(tetraElement)                :: tetra
         
@@ -144,11 +144,15 @@ module tracing
         
         ! power of the ray
         ! ray%power = RayPowerFun(tc1*tData(tetra%vertexIds(vertIDs(1))) + tc2*tData(tetra%vertexIds(vertIDs(2))) + (1-tc1-tc2)*tData(tetra%vertexIds(vertIDs(3))),area)
+        cTemperature = tc1*temperature(tetra%vertexIds(vertIDs(1))) + tc2*temperature(tetra%vertexIds(vertIDs(2))) + (1.0_dp - tc1- tc2)*temperature(tetra%vertexIds(vertIDs(3)))
+        !write(*,*) cTemperature
         if (count(ems%name == ignoredSurfaces) == 0) then
-	        ray%power = RayPowerFun(100.0_dp/123.0_dp*(ray%point(3) - 2.0_dp) + 100.0_dp,area, 1.0_dp)
+	        ray%power = RayPowerFun(cTemperature,area, 1.0_dp)
 	    else
-		    ray%power = RayPowerFun(100.0_dp/123.0_dp*(ray%point(3) - 2.0_dp) + 100.0_dp,area, alpha)
+		    ray%power = RayPowerFun(cTemperature,area, alpha)
 		end if
+        
+        Etotal = Etotal  +  ray%power
         
         ! just for checking (could be commented)
         open(unit=83, file=fname, action='write', position='append')  

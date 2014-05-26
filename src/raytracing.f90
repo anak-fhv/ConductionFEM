@@ -39,5 +39,5 @@ program raytracing
     close(unit=101)
 !     
     write(*,*) "power absorbed:", sum(absorbed)
-    
+    write(*,*) "power emitted:", Etotal
 end program raytracing 
