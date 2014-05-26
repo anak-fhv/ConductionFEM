@@ -44,7 +44,11 @@ module tracing
         call check_alloc_error(alloc_status, "absorbed vector")
         absorbed = 0.0_dp
         
-        ! do raytracing          
+        ! do raytracing
+        write(*,*)
+        write(*,*) "Start Raytracing"
+        write(*,*) "================"
+        write(*,*)          
         call cpu_time(t1)
 	    do k = 1,nrays
 		    
@@ -61,7 +65,7 @@ module tracing
 		    end if
 		    
 		    ! create ray
-	        call CreateRay(emSurf(emsIDfun()), ray, d_file1)
+	        call CreateRay(emSurf(emsIDfun(k)), ray, d_file1)
 
 	        ! assign energy to a ray and trace it
             if (k <= nRayPaths) call WriteRayData(ray, d_file2)
@@ -154,10 +158,10 @@ module tracing
         
         Etotal = Etotal  +  ray%power
         
-        ! just for checking (could be commented)
-        open(unit=83, file=fname, action='write', position='append')  
-        write(83,'(7(1x,e14.6))') ray%point, ray%direction, ray%power
-        close(unit=83)         
+!         ! just for checking (could be commented)
+!         open(unit=83, file=fname, action='write', position='append')  
+!         write(83,'(7(1x,e14.6))') ray%point, ray%direction, ray%power
+!         close(unit=83)         
         
     end subroutine CreateRay
     
@@ -345,10 +349,10 @@ module tracing
 	    absorbed(tetra%vertexIds(1)) = absorbed(tetra%vertexIds(1)) + t1*frac*ray%power
         absorbed(tetra%vertexIds(2)) = absorbed(tetra%vertexIds(2)) + t2*frac*ray%power
         absorbed(tetra%vertexIds(3)) = absorbed(tetra%vertexIds(3)) + t3*frac*ray%power
-        absorbed(tetra%vertexIds(4)) = absorbed(tetra%vertexIds(4)) + max((1-t1-t2-t3),0.0_dp)*frac*ray%power
+        absorbed(tetra%vertexIds(4)) = absorbed(tetra%vertexIds(4)) + max((1-t1-t2-t3)-1e-13_dp,0.0_dp)*frac*ray%power
         
         ! update raypower
-        ray%power = (1-frac)*ray%power
+        ray%power = (1.0_dp-frac)*ray%power
 !         write(*,'(2(e14.6,1x),4(i8,1x))') ray%power, frac, tetra%vertexIds(1), tetra%vertexIds(2),tetra%vertexIds(3),tetra%vertexIds(4)
         
     end subroutine RayAbsorbing
@@ -410,7 +414,6 @@ module tracing
 		end if
 		
 		if (RT_setup .eq. 'tomo') then
-! 		    write(*,*) 
 			if (count(-tetra%neighbors(ray%faceID,2) == emSurf%originalID) == 0) then
 				! one of the bounding box boundaries
 				! here specular reflection occurs
@@ -419,7 +422,9 @@ module tracing
 		    else
 			    ! one of the boundary emission surfaces
 			    ! here complete absortption occurs
-				call RayAbsorbing(ray, tetra, 1.0_dp)
+				! call RayAbsorbing(ray, tetra, 1.0_dp)
+				Eleft = Eleft + ray%power
+				ray%power = 0.0_dp
 		    end if
 			return
 		end if

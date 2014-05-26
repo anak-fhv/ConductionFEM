@@ -34,10 +34,12 @@ program raytracing
     call start_tracing
     
     ! just some output
-    open(unit=101, file=objFolder//"absorbed.res", action='write',status='new')   
+    open(unit=101, file=resFolder//"absorbed.res", status='replace')   
 	write(101,'(e14.6)') (absorbed(i), i =1, size(absorbed))
     close(unit=101)
-!     
+!   
+    write(*,*) "power emitted:", Etotal  
     write(*,*) "power absorbed:", sum(absorbed)
-    write(*,*) "power emitted:", Etotal
+    write(*,*) "power leaving:", Eleft
+    write(*,*) "difference:", Etotal - Eleft - sum(absorbed)
 end program raytracing 

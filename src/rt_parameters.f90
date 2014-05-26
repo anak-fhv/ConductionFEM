@@ -73,21 +73,32 @@ module rt_parameters
     
     
     ! select an emission surface
-     integer function emsIDfun()
+     integer function emsIDfun(k)
 	    
-	    real(dp)             :: r, totalarea
-	    integer              :: i
+	    real(dp)            :: r, totalarea
+	    integer             :: i
+	    integer, intent(in) :: k
 	    
-	    ! the code below selects an emission surface based on
-	    ! the overall area of all emission surfaces
-	    ! get totalarea of all emission surfaces
-	    totalarea = sum(emSurf%totalarea)
-	    r = myRandom(0)
+! 	    ! the code below selects an emission surface based on
+! 	    ! the overall area of all emission surfaces
+! 	    ! get totalarea of all emission surfaces
+! 	    totalarea = sum(emSurf%totalarea)
+! 	    r = myRandom(0)
+! 		
+! 		do emsIDfun = 1,size(emSurf)
+! 			if (r <= sum(emSurf(1:emsIDfun)%totalarea)/totalarea) exit
+! 	    end do
+ 
+		r = real(k)/real(nrays)
+
+		if (r < 1/3 ) then
+			emsIDfun = 1
+	    elseif (r < 2/3) then 
+		    emsIDfun = 2
+		else
+		    emsIDfun = 3
+		end if
 		
-		do emsIDfun = 1,size(emSurf)
-			if (r <= sum(emSurf(1:emsIDfun)%totalarea)/totalarea) exit
-	    end do
-	    		 
 	end function emsIDfun
 	
 	
