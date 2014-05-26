@@ -44,6 +44,7 @@ module rt_parameters
     real(dp), dimension(:,:), allocatable            :: vertices  ! filed of all vertices
     type(tetraElement), dimension(:), allocatable    :: tetraData ! type for tetraeder information
     type(emissionSurface), dimension(:), allocatable :: emSurf    ! emission surfaces
+    real(dp), dimension(:), allocatable              :: temperature ! temperature data for tomo-based setup
     
     contains
     ! wrapper for random numbers
@@ -91,17 +92,18 @@ module rt_parameters
 	
 	
 	! determine power of a single ray
-	real(dp) function RayPowerFun(temp, area)
+	real(dp) function RayPowerFun(temp, area, bbfrac)
 		
-		real(dp), intent(in) :: temp  ! temperature (in K)
-		real(dp), intent(in) :: area  ! area of emission face 
+		real(dp), intent(in) :: temp   ! temperature (in K)
+		real(dp), intent(in) :: area   ! area of emission face 
+		real(dp), intent(in) :: bbfrac ! hemispherical emittance
 		
 		if (RT_setup .eq. 'led') then
 			! setup if power is independent of location and temperature
 			RayPowerFun = Etotal/nrays
 		else
 			! setup if temperature-dependence exist
-			RayPowerFun = eta*sbk*temp**4*area
+			RayPowerFun = bbfrac*sbk*temp**4*area
 		end if
 		
 	end function RayPowerFun

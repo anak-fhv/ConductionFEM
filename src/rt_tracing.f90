@@ -88,11 +88,10 @@ module tracing
         integer                           :: i
         integer, dimension(1)             :: id
         integer, dimension(3)             :: vertIDs 
-        real(dp)                          :: psi, theta, b, c, d, area
-        real(dp), dimension(3)            :: p1, p2, p3, dir1, dir2, dir21, ds1, ndir 
+        real(dp)                          :: psi, theta, area, tc1, tc2, cTemperature
+        real(dp), dimension(3)            :: p1, p2, p3, dir1, ndir 
+        type(tetraElement)                :: tetra
         
-        
-!         write(*,*) ems%name
         ! decision whether to start at the beginning or end of the list (just for speed)
         psi = myRandom(0)
         if (psi > 0.5) then
@@ -108,51 +107,18 @@ module tracing
             ray%tetraID = ems%elemData(i,1)
             ray%faceID = ems%elemData(i,2)
         end if
+	    tetra = tetraData(ray%tetraID)
     
         ! get vertices for the selected face on the surface
         call return_facevertIds(ray%faceID,vertIDs)  
-        call return_coords(tetraData(ray%tetraID), vertIDs, p1, p2, p3)
-     
-        ! find longest side of triangle
-        id = maxloc([norm(p2-p1),norm(p3-p1),norm(p2-p3)])        
-        select case (id(1))
-	        case(1)
-		        dir1 = p2-p1
-	            dir2 = p3-p1
-	            ray%point = p1
-	        case(2)
-		        dir1 = p1-p3
-                dir2 = p2-p3 
-                ray%point = p3
-            case default
-	            dir1 = p3-p2
-                dir2 = p1-p2
-                ray%point = p2
-        end select
+        call return_coords(tetra, vertIDs, p1, p2, p3)
         
-        ! projection of dir2 onto dir1
-        dir21 = dot_product(dir1,dir2)/dot_product(dir1,dir1) * dir1
-    
-        ! choose random numbers based on triangle distribution
-        psi = myRandom(0)
-        theta = myRandom(0)
- 
-        ! parameters of triangle distribution
-        b = norm(dir1)     ! length of dir1
-        c = norm(dir21)    ! length of projection dir21
-        ds1 = dir2 - dir21 ! perpendicular to d1 and going through vertex of triangle which is not on d1
-                           ! dir21 + ds1 = dir2 
+        ! get random value for two tetra-coordinates
+        tc1 = 1.0_dp - sqrt(1-myRandom(0))
+        tc2 = (1.0_dp-tc1)*myRandom(0)
         
-        ! choose length depending on cdf of triangle distribution
-        if (psi <= c/b) then
-            ray%point = ray%point + sqrt(psi*b*c)*dir1/b                       ! random number along longest side (triangle distribution)
-            d = sqrt(psi*b*c)*tan(acos(dot_product(dir1,dir2)/(b*norm(dir2)))) ! length of perpendicular vector at new rayOrigin
-            ray%point = ray%point + theta*d/norm(ds1)*ds1                      ! random number along perpendicular direction (uniform distribution)     
-        else
-            ray%point = ray%point + (b - sqrt(b*(b-c)*(1-psi)))*dir1/b                               ! random number along longest side (triangle distribution)
-            d = sqrt(b*(b-c)*(1-psi)) *tan(acos(dot_product(-dir1,(dir2-dir1))/(b*norm(dir2-dir1)))) ! length of perpendicular vector at new rayOrigin
-            ray%point = ray%point + theta*d/norm(ds1)*ds1                                            ! random number along perpendicular direction (uniform distribution)        
-        end if
+        ! get points from triangle coordinates
+        ray%point = tc1*p1 + tc2*p2 + (1.0_dp - tc1 - tc2)*p3 
         
         ! test whether point is indeed in triangle
         if (PointInside(p1,p2,p3,ray%point) .eqv. .false.) then
@@ -161,25 +127,32 @@ module tracing
         end if
     
         ! choose ray direction
-        ndir = cross(dir1,dir2)  ! normal vector of triangle face
+!         ndir = cross(dir1,dir2)  ! normal vector of triangle face
+        ndir = cross(p2-p1, p3-p1)
         area = 0.5_dp*norm(ndir) ! area of triangle
         ndir = ndir/norm(ndir)
         
         ! check whether normal vector points inwards or outwards
-        do i = 1,4
-            if (any(i == vertIDs) .eqv. .false.) exit
-        end do        
-        if (dot_product(ndir, vertices(tetraData(ray%tetraID)%vertexIds(i),:) - ray%point) < 0) ndir = -ndir
+        if (dot_product(ndir, vertices(tetra%vertexIds(10-sum(vertIDs)),:) - ray%point) < 0) ndir = -ndir
 
         ! rotate normal vector into direction defined by psi and theta
-        dir1 = dir1/b
+!         dir1 = dir1/b
+        dir1 = (p2-p1)/norm(p2-p1)
         theta = asin(sqrt(myRandom(0)))
         psi = 2.0_dp*pi*myRandom(0) 	         
         ray%direction = sin(theta)*(cos(psi)*dir1 + sin(psi)*cross(ndir, dir1)) + cos(theta)*ndir
         
         ! power of the ray
-        ! TODO: make it dependent on temperature given on vertices
-        ray%power = raypowerfun(100.0_dp/123.0_dp*(ray%point(3) - 2.0_dp) + 100.0_dp,area)
+        ! ray%power = RayPowerFun(tc1*tData(tetra%vertexIds(vertIDs(1))) + tc2*tData(tetra%vertexIds(vertIDs(2))) + (1-tc1-tc2)*tData(tetra%vertexIds(vertIDs(3))),area)
+        cTemperature = tc1*temperature(tetra%vertexIds(vertIDs(1))) + tc2*temperature(tetra%vertexIds(vertIDs(2))) + (1.0_dp - tc1- tc2)*temperature(tetra%vertexIds(vertIDs(3)))
+        !write(*,*) cTemperature
+        if (count(ems%name == ignoredSurfaces) == 0) then
+	        ray%power = RayPowerFun(cTemperature,area, 1.0_dp)
+	    else
+		    ray%power = RayPowerFun(cTemperature,area, alpha)
+		end if
+        
+        Etotal = Etotal  +  ray%power
         
         ! just for checking (could be commented)
         open(unit=83, file=fname, action='write', position='append')  
@@ -300,15 +273,17 @@ module tracing
             ! if emitted from, cycle if it is the same face
             if (f == faceOld) cycle  
             
-            ! 1 vertex and 2 vectors of current face
-            call return_facevertIds(f,vertIDs)
-            call return_coords(tetra, vertIDs, p1, p2, p3)
-            p2 = p2 - p1 ! make a vector with origin at p1  
-            p3 = p3 - p1 ! make a vector with origin at p1
+            call return_surfNormal(tetra, f, nsf, p1)
             
-            ! normal vector of current face  
-            nsf = cross(p2,p3)
-            nsf = nsf/norm(nsf) 
+!             ! 1 vertex and 2 vectors of current face
+!             call return_facevertIds(f,vertIDs)
+!             call return_coords(tetra, vertIDs, p1, p2, p3)
+!             p2 = p2 - p1 ! make a vector with origin at p1  
+!             p3 = p3 - p1 ! make a vector with origin at p1
+!             
+!             ! normal vector of current face  
+!             nsf = cross(p2,p3)
+!             nsf = nsf/norm(nsf) 
 
             ! calculate length until intersection
             length = (dot_product(nsf,p1) - dot_product(nsf,ray%point))/dot_product(nsf, ray%direction)
@@ -435,8 +410,17 @@ module tracing
 		end if
 		
 		if (RT_setup .eq. 'tomo') then
-		    write(*,*) emSurf(-tetra%neighbors(ray%faceID,2))%name
-			call RayAbsorbing(ray, tetra, 1.0_dp)
+! 		    write(*,*) 
+			if (count(-tetra%neighbors(ray%faceID,2) == emSurf%originalID) == 0) then
+				! one of the bounding box boundaries
+				! here specular reflection occurs
+				call IncidentAngle(tetra, ray, cosAngle, nsf)
+				ray%direction = ray%direction + 2*cosAngle*nsf
+		    else
+			    ! one of the boundary emission surfaces
+			    ! here complete absortption occurs
+				call RayAbsorbing(ray, tetra, 1.0_dp)
+		    end if
 			return
 		end if
 		
@@ -489,22 +473,38 @@ module tracing
 
 		type(rayContainer), intent(inout) :: ray
 		type(tetraElement), intent(in)    :: tetra
-		real(dp), dimension(3)            :: nsf
-		real(dp)                          :: cosAngle, reflectivity
-	
-		! get incident angle
-		call IncidentAngle(tetra, ray, cosAngle, nsf)
-        
-        ! compare with random if refelction or absorption occurs
-        if (myRandom(0) <= 1.0_dp - 1.5_dp*alpha*cosAngle) then
-	        ! ray is reflected
-	        ray%direction = ray%direction + 2*cosAngle*nsf  
-	    else
-		    ! ray is absorbed
+		real(dp), dimension(3)            :: nsf, p1, dir1
+		real(dp)                          :: cosAngle, theta, psi
+		integer, dimension(3)             :: vertIDs
+		
+! 		! specular case	
+! 		! get incident angle
+! 		call IncidentAngle(tetra, ray, cosAngle, nsf)
+!         
+!         ! compare with random if reflection or absorption occurs
+!         if (myRandom(0) <= 1.0_dp - 1.5_dp*alpha*cosAngle) then
+! 	        ! ray is reflected
+! 	        ray%direction = ray%direction + 2*cosAngle*nsf  
+! 	    else
+! 		    ! ray is absorbed
+! 		    ! TODO: case of partial absorption
+! 		    call RayAbsorbing(ray, tetra, 1.0_dp)
+! 		end if
+		
+		! diffuse case
+	    if (myRandom(0) <= 1.0_dp - alpha) then
+		    ! diffuse reflection
+		    call return_surfNormal(tetra, ray%faceID, nsf, p1)
+		    dir1 = (ray%point-p1)/norm(ray%point-p1) ! a vector in the face
+            theta = asin(sqrt(myRandom(0)))
+            psi = 2.0_dp*pi*myRandom(0) 	         
+            ray%direction = sin(theta)*(cos(psi)*dir1 + sin(psi)*cross(nsf, dir1)) + cos(theta)*nsf
+		else
+		    ! absorption
 		    ! TODO: case of partial absorption
 		    call RayAbsorbing(ray, tetra, 1.0_dp)
 		end if
-	
+		
 	end subroutine DomainChange
 	
 	
@@ -539,6 +539,7 @@ module tracing
         ! must be positive (else normal is pointing outwards and must be used as negative)
         cosAngle = -dot_product(ray%direction,nsf)
         if (cosAngle < 0.0_dp) then
+            write(*,*) "change direction of normal"
             cosAngle = -cosAngle
             nsf = -nsf
         end if

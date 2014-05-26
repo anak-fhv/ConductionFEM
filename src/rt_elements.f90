@@ -89,20 +89,21 @@ module rt_elements
     end function
     
 	! return surface normal and reference point (one of thee vertices)
+	! points inside tetra element
 	subroutine return_surfNormal(tetra, face, normal, point)
 	
 		type(tetraElement), intent(in)      :: tetra
 		integer, intent(in)                 :: face
 		real(dp), dimension(3), intent(out) :: normal, point
-		real(dp), dimension(3) :: p2, p3
-		integer, dimension(3) :: vertIDs
-! 		integer :: tmpface
+		real(dp), dimension(3)              :: p2, p3
+		integer, dimension(3)               :: vertIDs
 		
-! 		tmpface = get_facenumber(face,tetra)
 		call return_facevertIds(face,vertIDs)  
         call return_coords(tetra, vertIDs, point, p2, p3)
         normal = cross(p2-point,p3-point)
         normal = normal/norm(normal)
+        
+        if (dot_product(normal, vertices(tetra%vertexIds(10-sum(vertIDs)),:) - point) < 0) normal = -normal
 	
 	end subroutine return_surfNormal
 	
