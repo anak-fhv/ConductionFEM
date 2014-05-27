@@ -148,15 +148,33 @@ module tracing
         
         ! power of the ray
         ! ray%power = RayPowerFun(tc1*tData(tetra%vertexIds(vertIDs(1))) + tc2*tData(tetra%vertexIds(vertIDs(2))) + (1-tc1-tc2)*tData(tetra%vertexIds(vertIDs(3))),area)
-        cTemperature = tc1*temperature(tetra%vertexIds(vertIDs(1))) + tc2*temperature(tetra%vertexIds(vertIDs(2))) + (1.0_dp - tc1- tc2)*temperature(tetra%vertexIds(vertIDs(3)))
-        !write(*,*) cTemperature
-        if (count(ems%name == ignoredSurfaces) == 0) then
-	        ray%power = RayPowerFun(cTemperature,area, 1.0_dp)
-	    else
-		    ray%power = RayPowerFun(cTemperature,area, alpha)
-		end if
+        if (RT_setup .eq. 'tomo') then
+	        cTemperature = tc1*temperature(tetra%vertexIds(vertIDs(1))) + tc2*temperature(tetra%vertexIds(vertIDs(2))) + (1.0_dp - tc1- tc2)*temperature(tetra%vertexIds(vertIDs(3)))
+	        !write(*,*) cTemperature
+	        if (count(ems%name == ignoredSurfaces) == 0) then
+		        ray%power = RayPowerFun(cTemperature,area, 1.0_dp)
+		    else
+			    ray%power = RayPowerFun(cTemperature,area, alpha)
+			end if
         
-        Etotal = Etotal  +  ray%power
+            Etotal = Etotal  +  ray%power
+            
+        elseif (RT_setup .eq. 'led') then
+	        ray%power = RayPowerFun(1.0_dp,1.0_dp,1.0_dp)  ! call with dummy variables
+	        ! wavelength
+	        theta = myRandom(0)
+            id = minloc(abs(spectrumB(:,2) - theta))
+            if (abs(spectrumB(id(1),2) - theta) .le. 1e-13_dp) then
+	            ray%wavelength = spectrumB(id(1),1)
+            elseif (spectrumB(id(1),2) > theta) then
+		        ray%wavelength = linInterpol(spectrumB(id(1)-1,2),spectrumB(id(1),2),spectrumB(id(1)-1,1),spectrumB(id(1),1),theta)
+		    else
+			    ray%wavelength = linInterpol(spectrumB(id(1),2),spectrumB(id(1)+1,2),spectrumB(id(1),1),spectrumB(id(1)+1,1),theta)
+			end if
+			
+! 			write(*,*) ray%wavelength, theta, spectrumB(id,:)
+			
+        end if
         
 !         ! just for checking (could be commented)
 !         open(unit=83, file=fname, action='write', position='append')  
@@ -219,11 +237,7 @@ module tracing
 			    call RayAbsorbing(ray, tetra, 1.0_dp-omega)
 	        
 				! scattering
-			    call RayScatter(ray,tetra)
-				! if scattering to a boundary happens
-				if (tetra%neighbors(ray%faceID,2) < 0) then
-				    call BoundaryHandling(ray, tetra, leaveFname)
-				end if
+			    call RayScatter(ray, tetra, leaveFname)
 						
 				! write point on path
 			    if (writeflag) call WriteRayData(ray, rtfname)
@@ -359,10 +373,11 @@ module tracing
     
     
     ! perform scattering (so far isotropic only)
-    subroutine RayScatter(ray, tetra)
+    subroutine RayScatter(ray, tetra, fname)
     
 	    type(rayContainer), intent(inout) :: ray
 	    type(tetraElement), intent(in)    :: tetra
+	    character(len=*), intent(in)      :: fname
 	    real(dp)                          :: psi, theta
 	    real(dp), dimension(3)            :: v1
 	    
@@ -383,9 +398,14 @@ module tracing
         ! find intersection point with face of current tetraeder
         call FindNextFace(tetra,ray,-1)
         
-        ! output shoul be point on a tetraeder face with a direction inwards the tetra
-        ray%tetraID = tetra%neighbors(ray%faceID,1) ! neighbouring tetra
-	    ray%faceID = tetra%neighbors(ray%faceID,2)  ! face in neighbouring tetra
+        ! if scattering to a boundary happens
+	    if (tetra%neighbors(ray%faceID,2) < 0) then
+			call BoundaryHandling(ray, tetra, fname)
+	    else
+	        ! output should be point on a tetraeder face with a direction inwards the tetra
+	        ray%tetraID = tetra%neighbors(ray%faceID,1) ! neighbouring tetra
+		    ray%faceID = tetra%neighbors(ray%faceID,2)  ! face in neighbouring tetra
+        end if
         
         ! some test of sanity?
         
@@ -426,49 +446,54 @@ module tracing
 				Eleft = Eleft + ray%power
 				ray%power = 0.0_dp
 		    end if
-			return
-		end if
+		elseif (RT_setup .eq. 'led') then
 		
-		! refraction indices (should come from outside)
-		! refraction indices are defined by module rt_properties
-		if (tetra%neighbors(ray%faceID,2) < 0)  then
-			ratio = refracIndices(tetra%domain+1)/refracIndices(1)
-	    else
-		    ratio = refracIndices(tetra%domain+1)/refracIndices(tetraData(tetra%neighbors(ray%faceID,1))%domain + 1)
-		end if
+			! refraction indices (should come from outside)
+			! refraction indices are defined by module rt_properties			
+			ratio = refracIndices(tetra%domain)/refracIndices(2)
+			
+! 			if (tetra%neighbors(ray%faceID,2) < 0)  then
+! 				
+! 		    else
+! 			    ratio = refracIndices(tetra%domain+1)/refracIndices(tetraData(tetra%neighbors(ray%faceID,1))%domain + 1)
+! 			end if
 	    
-	    ! get incident angle
-	    call IncidentAngle(tetra, ray, cosAngle, nsf)
+		    ! get incident angle
+		    call IncidentAngle(tetra, ray, cosAngle, nsf)
         
-        ! check for critical angle  
-        if (ratio*sin(acos(cosAngle)) > 1) then
-            ! total reflection
-	        ray%direction = ray%direction + 2*cosAngle*nsf 
-	    else
-	        ! angles from Snell's law
-		    theta1 = acos(cosAngle)
-		    theta2 = asin(ratio*sin(theta1))
-	        
-	        ! Fresnel's relation
-		    rho = 0.5_dp*(tan(theta1-theta2)**2/tan(theta1+theta2)**2 + sin(theta1-theta2)**2/sin(theta1+theta2)**2)
-	        
-	        ! decide wheter everything is transmitted or reflected
-	        if (myRandom(0) < rho) then
-		        ray%direction = ray%direction + 2*cosAngle*nsf  ! ray is reflected
+	        ! check for critical angle  
+	        if (ratio*sin(acos(cosAngle)) > 1) then
+	            ! total reflection
+		        ray%direction = ray%direction + 2*cosAngle*nsf 
 		    else
-		        ! ray is transmitted
-			    ray%direction = ratio*ray%direction + (ratio*cosAngle - sqrt(1-ratio**2*(1-cosAngle**2)))*nsf 
-	            
-	            ! write out ray data
-	            open(unit=85, file=leaveFname, action='write', position='append')  
-		        write(85,'(8(1x,e14.6))') ray%point, ray%direction, ray%power, ray%wavelength
-	            close(unit=85)
-	            
-	            ! update ray container
-	            ray%power = 0.0_dp
-	        end if
+		        ! angles from Snell's law
+			    theta1 = acos(cosAngle)
+			    theta2 = asin(ratio*sin(theta1))
 	        
-        end if
+		        ! Fresnel's relation
+			    rho = 0.5_dp*(tan(theta1-theta2)**2/tan(theta1+theta2)**2 + sin(theta1-theta2)**2/sin(theta1+theta2)**2)
+	        
+		        ! decide wheter everything is transmitted or reflected
+		        if (myRandom(0) < rho) then
+			        ray%direction = ray%direction + 2*cosAngle*nsf  ! ray is reflected
+			    else
+			        ! ray is transmitted
+				    ray%direction = ratio*ray%direction + (ratio*cosAngle - sqrt(1-ratio**2*(1-cosAngle**2)))*nsf  
+	                    
+		            ! write out ray data
+		            open(unit=85, file=leaveFname, action='write', position='append')  
+			        write(85,'(8(1x,e14.6))') ray%point, ray%direction, ray%power, ray%wavelength
+		            close(unit=85)
+		            
+		            Eleft = Eleft + ray%power
+	            
+		            ! update ray container
+		            ray%power = 0.0_dp
+		        end if
+	        
+	        end if
+		
+		end if		
 	           
 	end subroutine BoundaryHandling
 	

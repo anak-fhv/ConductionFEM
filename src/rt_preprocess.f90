@@ -15,7 +15,7 @@ module pre_process
     subroutine start_preprocessing
     
 		logical :: l
-		integer :: alloc_status, io_error, i
+		integer :: alloc_status, io_error, i, n
                 
         ! check if file provided by user exists
         ! first check for *.data file (since it is faster)
@@ -47,16 +47,32 @@ module pre_process
 		    call check_alloc_error(alloc_status, "temperature array")
             
 		    open(unit=88, file=dataFolder//"RPC_2d_simple_temp_grad.data", status = 'old', action='read',iostat = io_error)
+		    call check_io_error(io_error,"reading temperature tomo",88)
 		    do i =1,size(vertices,1)
 			    read(88,'(e14.6)') temperature(i)
             end do
-            close(unit=81)
+            close(unit=88)
+        elseif (RT_setup .eq. 'led') then
+	        write(*,*)
+            write(*,*) "reading additional data files ..."
+            write(*,*)
+            
+            open(unit=88, file=dataFolder//"LED_spektrum_blue.data", status = 'old', action='read',iostat = io_error)
+            call check_io_error(io_error,"reading led blue",88)
+            
+            read(88,'(i8)') n
+            
+			allocate(spectrumB(n,2), stat=alloc_status)
+		    call check_alloc_error(alloc_status, "spectrum data")
+            
+		    do i =1,n
+			    read(88,'(e14.6, 1x, e14.6)') spectrumB(i,:)
+            end do
+            close(unit=88)
 		end if
-		
-! 		write(*,*) size(temperature)
-		
 		 
     end subroutine start_preprocessing
+    
     
     ! main routine which perform reading of input data and calls routines for
     ! creating emission surfaces and populates tetraElement-type
