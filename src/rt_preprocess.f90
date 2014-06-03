@@ -57,6 +57,7 @@ module pre_process
             write(*,*) "reading additional data files ..."
             write(*,*)
             
+            ! blue spectrum
             open(unit=88, file=dataFolder//"LED_spektrum_blue.data", status = 'old', action='read',iostat = io_error)
             call check_io_error(io_error,"reading led blue",88)
             
@@ -69,6 +70,22 @@ module pre_process
 			    read(88,'(e14.6, 1x, e14.6)') spectrumB(i,:)
             end do
             close(unit=88)
+            
+            ! yellow spectrum
+            open(unit=88, file=dataFolder//"LED_spektrum_yellow.data", status = 'old', action='read',iostat = io_error)
+            call check_io_error(io_error,"reading led yellow",88)
+            
+            read(88,'(i8)') n
+            
+			allocate(spectrumY(n,2), stat=alloc_status)
+		    call check_alloc_error(alloc_status, "yellow spectrum data")
+            
+		    do i =1,n
+			    read(88,'(e14.6, 1x, e14.6)') spectrumY(i,:)
+            end do
+            close(unit=88)
+            
+            
 		end if
 		 
     end subroutine start_preprocessing

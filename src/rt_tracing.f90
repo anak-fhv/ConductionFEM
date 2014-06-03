@@ -15,7 +15,7 @@ module tracing
     subroutine start_tracing
     
         type(rayContainer) :: ray
-        real(dp)           :: t1, t2
+        real(dp)           :: t1, t2, pot
         integer            :: io_error, write_error, k, alloc_status
         character(len=100) :: leaveFname, d_file1, d_file2, tmp 
         
@@ -48,8 +48,10 @@ module tracing
         write(*,*)
         write(*,*) "Start Raytracing"
         write(*,*) "================"
-        write(*,*)          
+        write(*,*)
+        write(*,'(a10,1x,a10,1x,a14,1x,a14,1x,a14,1x,a14)') "iter", "nonzeros", "max", "mean", "rms", "var"          
         call cpu_time(t1)
+        pot = 0.0
 	    do k = 1,nrays
 		    
 		    if (k <= nRayPaths) then
@@ -71,9 +73,20 @@ module tracing
             if (k <= nRayPaths) call WriteRayData(ray, d_file2)
 	        call TraceRay(ray, leaveFname, d_file2, k<=nRayPaths)
 	        
+	        ! catch some statistics
+	        if (k .eq. nint(10**(pot))) then
+		        write(*,'(i10,1x,i10,1x,e14.6,1x,e14.6,1x,e14.6,1x,e14.6)') k, count(absorbed > 0), maxval(absorbed), &
+		                                                                    sum(absorbed, absorbed.gt.0)/count(absorbed .gt. 0), sqrt(sum(absorbed**2,absorbed.gt.0)/count(absorbed .gt. 0)), &
+		                                                                    sum((absorbed-(sum(absorbed, absorbed.gt.0)/count(absorbed .gt. 0)))**2,absorbed.gt.0)/(count(absorbed .gt. 0)-1)
+		        if (k .le. 10) pot = pot + 0.2
+		        if (k .gt. 10) pot = pot + 0.1
+		    end if    
+	        
+	        
 	    end do
 	    call cpu_time(t2)
     
+        write(*,*)
 	    write(*,*) "run time raytracing: ", t2-t1
     
     end subroutine start_tracing
@@ -228,15 +241,18 @@ module tracing
             elseif ((RT_setup .eq. 'led') .and. (ray%length >= length) ) then 
 			    
 			    ! setup specific for 'led'    
-				! check if mean-free path length is reached
+				! mean-free path length is reached
 				
 			    ! set ray point to point where interaction happens
 			    ray%point = ray%point + (length - ray%length)*ray%direction
             
-			    !absorption
-			    call RayAbsorbing(ray, tetra, 1.0_dp-omega)
-	        
-				! scattering
+			    ! absorption and scattering
+			    ! happens only for blue light
+			    ! quantum efficiency = 0.95, i.e. 0.95 will enter absorbtion process
+			    ! of these 0.05 will be completely absorbed and 0.95 will be remmitted
+			    ! yellow light will be reflected completely (no self-absorbtion)
+			    ! TODO: define constants as input parameters
+			    if ((ray%colorchange .eqv. .false.) .and. (myRandom(0) .gt. 0.05_dp)) call RayAbsorbing(ray, tetra, 0.05_dp)
 			    call RayScatter(ray, tetra, leaveFname)
 						
 				! write point on path
@@ -354,7 +370,7 @@ module tracing
 	    type(rayContainer), intent(inout) :: ray
 	    type(tetraElement), intent(in)    :: tetra
 	    real(dp), intent(in)              :: frac
-	    real(dp)                          :: t1, t2, t3
+	    real(dp)                          :: t1, t2, t3, theta
 	    
 	    ! do some shape function magic
 	    call Cartesian2Tetra(ray%point, tetra, t1, t2, t3)
@@ -368,6 +384,12 @@ module tracing
         ! update raypower
         ray%power = (1.0_dp-frac)*ray%power
 !         write(*,'(2(e14.6,1x),4(i8,1x))') ray%power, frac, tetra%vertexIds(1), tetra%vertexIds(2),tetra%vertexIds(3),tetra%vertexIds(4)
+        
+        ! change to yellow light
+        if (RT_setup .eq. 'led') then
+	        ray%colorchange = .true.
+	        call RayWavelength(ray,spectrumY)
+        end if
         
     end subroutine RayAbsorbing
     
@@ -441,7 +463,7 @@ module tracing
 				ray%direction = ray%direction + 2*cosAngle*nsf
 		    else
 			    ! one of the boundary emission surfaces
-			    ! here complete absortption occurs
+			    ! here complete absortption occurs (but should not go into absorped array)
 				! call RayAbsorbing(ray, tetra, 1.0_dp)
 				Eleft = Eleft + ray%power
 				ray%power = 0.0_dp
@@ -485,8 +507,14 @@ module tracing
 			        write(85,'(8(1x,e14.6))') ray%point, ray%direction, ray%power, ray%wavelength
 		            close(unit=85)
 		            
+		            ! just some internal energy accounting
 		            Eleft = Eleft + ray%power
-	            
+		            
+		            if (ray%colorchange) then
+			            Eyellow = Eyellow + ray%power
+			        else
+			            Eblue = Eblue + ray%power
+	                end if
 		            ! update ray container
 		            ray%power = 0.0_dp
 		        end if
@@ -575,5 +603,26 @@ module tracing
         end if
 	
 	end subroutine IncidentAngle
+	
+	
+	! determine wavelength in case of led setup
+	subroutine RayWavelength(ray,spectrum)
+	
+		type(rayContainer)    :: ray
+		real(dp), intent(in)  :: spectrum(:,:)
+		real(dp)              :: theta
+		integer, dimension(1) :: id
+		
+		theta = myRandom(0)
+        id = minloc(abs(spectrum(:,2) - theta))
+        if (abs(spectrum(id(1),2) - theta) .le. 1e-13_dp) then
+	        ray%wavelength = spectrum(id(1),1)
+        elseif (spectrum(id(1),2) > theta) then
+		    ray%wavelength = linInterpol(spectrum(id(1)-1,2),spectrum(id(1),2),spectrum(id(1)-1,1),spectrum(id(1),1),theta)
+		else
+			ray%wavelength = linInterpol(spectrum(id(1),2),spectrum(id(1)+1,2),spectrum(id(1),1),spectrum(id(1)+1,1),theta)
+	    end if
+	
+	end subroutine RayWavelength
 	
 end module tracing

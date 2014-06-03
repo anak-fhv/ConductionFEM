@@ -37,6 +37,7 @@ module rt_parameters
         real(dp)               :: length = 0.0_dp      ! distance travelled
         real(dp)               :: power = 1.0_dp       ! current power of ray
         real(dp)               :: wavelength = 1.0_dp  ! wavelength
+        logical                :: colorchange = .false. ! flag whether color change has happened
     end type
     
     ! some gloabl variables
@@ -45,7 +46,8 @@ module rt_parameters
     type(tetraElement), dimension(:), allocatable    :: tetraData   ! type for tetraeder information
     type(emissionSurface), dimension(:), allocatable :: emSurf      ! emission surfaces
     real(dp), dimension(:), allocatable              :: temperature ! temperature data for tomo-based setup
-    real(dp), dimension(:,:), allocatable            :: spectrumB   ! temperature data for tomo-based setup
+    real(dp), dimension(:,:), allocatable            :: spectrumB   ! blue spectrum data for led setup
+    real(dp), dimension(:,:), allocatable            :: spectrumY   ! yellow spectrum data for led setup
     
     contains
     ! wrapper for random numbers
@@ -126,7 +128,7 @@ module rt_parameters
 	
 		! only meaningful for LED setup
 	    ! kappa and sigma are globally defined material properties
-		GetPathLength = 1.0_dp/(kappa+sigma)*log(1/myRandom(0))
+		GetPathLength = 1.0_dp/(kappa+sigma)*log(1.0_dp/myRandom(0))
 	    
 	end function GetPathLength
 	
