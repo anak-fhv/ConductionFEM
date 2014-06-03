@@ -18,6 +18,7 @@ module tracing
         real(dp)           :: t1, t2, pot
         integer            :: io_error, write_error, k, alloc_status
         character(len=100) :: leaveFname, d_file1, d_file2, tmp 
+        type(runstatistic) :: stats
         
         ! create file for output
         ! file containing leaving enclosure location
@@ -75,9 +76,8 @@ module tracing
 	        
 	        ! catch some statistics
 	        if (k .eq. nint(10**(pot))) then
-		        write(*,'(i10,1x,i10,1x,e14.6,1x,e14.6,1x,e14.6,1x,e14.6)') k, count(absorbed > 0), maxval(absorbed), &
-		                                                                    sum(absorbed, absorbed.gt.0)/count(absorbed .gt. 0), sqrt(sum(absorbed**2,absorbed.gt.0)/count(absorbed .gt. 0)), &
-		                                                                    sum((absorbed-(sum(absorbed, absorbed.gt.0)/count(absorbed .gt. 0)))**2,absorbed.gt.0)/(count(absorbed .gt. 0)-1)
+	            call runStats(stats)
+		        write(*,'(i10,1x,i10,1x,e14.6,1x,e14.6,1x,e14.6,1x,e14.6)') k, stats%entries, stats%maxvalue, stats%logmeannormal, stats%rms, stats%logvarnormal 
 		        if (k .le. 10) pot = pot + 0.2
 		        if (k .gt. 10) pot = pot + 0.1
 		    end if    
@@ -102,12 +102,14 @@ module tracing
         type(emissionSurface), intent(in) :: ems
         type(rayContainer), intent(out)   :: ray
         character(len=*), intent(in)      :: fname
-        integer                           :: i
+        integer                           :: i, j
         integer, dimension(1)             :: id
         integer, dimension(3)             :: vertIDs 
         real(dp)                          :: psi, theta, area, tc1, tc2, cTemperature
         real(dp), dimension(3)            :: p1, p2, p3, dir1, ndir 
         type(tetraElement)                :: tetra
+        real(dp), dimension(3,3)          :: M
+        real(dp), dimension(3,4)          :: corners
         
         ! decision whether to start at the beginning or end of the list (just for speed)
         psi = myRandom(0)
@@ -164,10 +166,22 @@ module tracing
         if (RT_setup .eq. 'tomo') then
 	        cTemperature = tc1*temperature(tetra%vertexIds(vertIDs(1))) + tc2*temperature(tetra%vertexIds(vertIDs(2))) + (1.0_dp - tc1- tc2)*temperature(tetra%vertexIds(vertIDs(3)))
 	        !write(*,*) cTemperature
+	        
+	        ! get tetraeder vertex points
+			forall(i = 1:4) corners(:,i) = vertices(tetra%vertexIds(i),:)
+		
+			! assemble matrix describing transformation from tetra-coords to cartesian-coords
+		    do  i = 1,3
+			    do j = 1,3
+				    M(j,i) = corners(j,i) - corners(j,4) 
+				end do
+		    end do
+	        
+	        ! emmissive power depends on volume per ray (below is rough estimate) and determinante of jacobian
 	        if (count(ems%name == ignoredSurfaces) == 0) then
-		        ray%power = RayPowerFun(cTemperature,area, 1.0_dp)
+		        ray%power = RayPowerFun(cTemperature,1860867.0_dp/real(nrays)*dot_product(M(:,1), cross(M(:,2), M(:,3))), 1.0_dp)
 		    else
-			    ray%power = RayPowerFun(cTemperature,area, alpha)
+			    ray%power = RayPowerFun(cTemperature,1860867.0_dp/real(nrays)*dot_product(M(:,1), cross(M(:,2), M(:,3))), alpha)
 			end if
         
             Etotal = Etotal  +  ray%power
@@ -624,5 +638,21 @@ module tracing
 	    end if
 	
 	end subroutine RayWavelength
+	
+	! calculating some runstatistics
+	subroutine runStats(stats)
+		type(runstatistic), intent(out) :: stats
+		
+		stats%entries = count(absorbed.gt.0)
+		stats%maxvalue = maxval(absorbed)
+		stats%mean = sum(absorbed, absorbed.gt.0)/stats%entries
+		stats%logmean = sum(log10(absorbed), absorbed.gt.0)/stats%entries
+		stats%rms = sqrt(sum(absorbed**2,absorbed.gt.0)/stats%entries)
+		stats%var = sum((absorbed - stats%mean)**2, absorbed.gt.0)/(stats%entries-1)
+		stats%logvar =  sum((log10(absorbed) - stats%logmean)**2, absorbed.gt.0)/(stats%entries-1)
+		stats%logmeannormal = sum(log10(absorbed)/log10(stats%maxvalue), absorbed.gt.0)/stats%entries
+		stats%logvarnormal =  sum((log10(absorbed)/log10(stats%maxvalue) - stats%logmeannormal)**2, absorbed.gt.0)/(stats%entries-1)
+		
+	end subroutine runStats	
 	
 end module tracing

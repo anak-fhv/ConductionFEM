@@ -40,6 +40,11 @@ module rt_parameters
         logical                :: colorchange = .false. ! flag whether color change has happened
     end type
     
+    type :: runstatistic ! statistics for empirical runs
+	    real(dp) :: maxvalue, mean, var, rms, logvar,logmean,logmeannormal, logvarnormal
+	    integer  :: entries
+    end type
+    
     ! some gloabl variables
     real(dp), dimension(:), allocatable              :: absorbed    ! field containing info about absorptio
     real(dp), dimension(:,:), allocatable            :: vertices    ! filed of all vertices
@@ -86,30 +91,30 @@ module rt_parameters
 ! 	    ! the overall area of all emission surfaces
 ! 	    ! get totalarea of all emission surfaces
 ! 	    totalarea = sum(emSurf%totalarea)
-	    r = myRandom(0)
-		
-		do emsIDfun = 1,size(emSurf)
-			if (r <= sum(emSurf(1:emsIDfun)%totalarea)/totalarea) exit
-	    end do
+! 	    r = myRandom(0)
+! 		
+! 		do emsIDfun = 1,size(emSurf)
+! 			if (r <= sum(emSurf(1:emsIDfun)%totalarea)/totalarea) exit
+! 	    end do
  
-! 		r = real(k)/real(nrays)
-! 
-! 		if (r < 1/3 ) then
-! 			emsIDfun = 1
-! 	    elseif (r < 2/3) then 
-! 		    emsIDfun = 2
-! 		else
-! 		    emsIDfun = 3
-! 		end if
+		r = real(k)/real(nrays)
+
+		if (r < 1/3 ) then
+			emsIDfun = 1
+	    elseif (r < 2/3) then 
+		    emsIDfun = 2
+		else
+		    emsIDfun = 3
+		end if
 		
 	end function emsIDfun
 	
 	
 	! determine power of a single ray
-	real(dp) function RayPowerFun(temp, area, bbfrac)
+	real(dp) function RayPowerFun(temp, factor, bbfrac)
 		
 		real(dp), intent(in) :: temp   ! temperature (in K)
-		real(dp), intent(in) :: area   ! area of emission face 
+		real(dp), intent(in) :: factor ! volume- or area-dependent factor 
 		real(dp), intent(in) :: bbfrac ! hemispherical emittance
 		
 		if (RT_setup .eq. 'led') then
@@ -117,7 +122,7 @@ module rt_parameters
 			RayPowerFun = Etotal/nrays
 		else
 			! setup if temperature-dependence exist
-			RayPowerFun = bbfrac*sbk*temp**4*area
+			RayPowerFun = 4*bbfrac*sbk*temp**4*factor
 		end if
 		
 	end function RayPowerFun
