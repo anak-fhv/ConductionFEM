@@ -78,5 +78,19 @@ module rt_math
         norm = sqrt(dot_product(v,v))
 
 	end function norm
+	
+	! linear interpolation between value pairs (x1,y1) and (x2,y2)
+	! output: value at given point x3
+	real(dp) function linInterpol(x1,x2,y1,y2,x3)
+	
+		real(dp) :: x1,x2,x3,y1,y2, deltaY, deltaX
+		
+		deltaY = y1 - y2
+        deltaX = x1 - x2
+        linInterpol = deltaY/deltaX*(x3 - x1) + y1
+        
+        if (abs(deltaX) < 1e-13_dp) write(*,*) "numerics!"
+    
+    end function linInterpol
     
 end module rt_math                           

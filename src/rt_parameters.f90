@@ -37,14 +37,17 @@ module rt_parameters
         real(dp)               :: length = 0.0_dp      ! distance travelled
         real(dp)               :: power = 1.0_dp       ! current power of ray
         real(dp)               :: wavelength = 1.0_dp  ! wavelength
+        logical                :: colorchange = .false. ! flag whether color change has happened
     end type
     
     ! some gloabl variables
-    real(dp), dimension(:), allocatable              :: absorbed  ! field containing info about absorptio
-    real(dp), dimension(:,:), allocatable            :: vertices  ! filed of all vertices
-    type(tetraElement), dimension(:), allocatable    :: tetraData ! type for tetraeder information
-    type(emissionSurface), dimension(:), allocatable :: emSurf    ! emission surfaces
+    real(dp), dimension(:), allocatable              :: absorbed    ! field containing info about absorptio
+    real(dp), dimension(:,:), allocatable            :: vertices    ! filed of all vertices
+    type(tetraElement), dimension(:), allocatable    :: tetraData   ! type for tetraeder information
+    type(emissionSurface), dimension(:), allocatable :: emSurf      ! emission surfaces
     real(dp), dimension(:), allocatable              :: temperature ! temperature data for tomo-based setup
+    real(dp), dimension(:,:), allocatable            :: spectrumB   ! blue spectrum data for led setup
+    real(dp), dimension(:,:), allocatable            :: spectrumY   ! yellow spectrum data for led setup
     
     contains
     ! wrapper for random numbers
@@ -83,21 +86,21 @@ module rt_parameters
 ! 	    ! the overall area of all emission surfaces
 ! 	    ! get totalarea of all emission surfaces
 ! 	    totalarea = sum(emSurf%totalarea)
-! 	    r = myRandom(0)
-! 		
-! 		do emsIDfun = 1,size(emSurf)
-! 			if (r <= sum(emSurf(1:emsIDfun)%totalarea)/totalarea) exit
-! 	    end do
+	    r = myRandom(0)
+		
+		do emsIDfun = 1,size(emSurf)
+			if (r <= sum(emSurf(1:emsIDfun)%totalarea)/totalarea) exit
+	    end do
  
-		r = real(k)/real(nrays)
-
-		if (r < 1/3 ) then
-			emsIDfun = 1
-	    elseif (r < 2/3) then 
-		    emsIDfun = 2
-		else
-		    emsIDfun = 3
-		end if
+! 		r = real(k)/real(nrays)
+! 
+! 		if (r < 1/3 ) then
+! 			emsIDfun = 1
+! 	    elseif (r < 2/3) then 
+! 		    emsIDfun = 2
+! 		else
+! 		    emsIDfun = 3
+! 		end if
 		
 	end function emsIDfun
 	
@@ -125,7 +128,7 @@ module rt_parameters
 	
 		! only meaningful for LED setup
 	    ! kappa and sigma are globally defined material properties
-		GetPathLength = 1.0_dp/(kappa+sigma)*log(1/myRandom(0))
+		GetPathLength = 1.0_dp/(kappa+sigma)*log(1.0_dp/myRandom(0))
 	    
 	end function GetPathLength
 	

@@ -42,4 +42,7 @@ program raytracing
     write(*,*) "power absorbed:", sum(absorbed)
     write(*,*) "power leaving:", Eleft
     write(*,*) "difference:", Etotal - Eleft - sum(absorbed)
+    write(*,*)
+    write(*,*) "Eblue:", Eblue
+    write(*,*) "Eyellow:", Eyellow
 end program raytracing 

@@ -1,0 +1,15 @@
+#!bin/sh
+
+clear
+make clean
+make rt    # replace with command for all
+
+cd ../obj/
+for ((j=1; j<10; j++))
+do
+	test.out  # run conduction analysis
+	cp ../results/RPC_2d_simple_temp_grad ../data/RPC_2d_simple_temp_grad_${j} # save temperature profile
+    rt.out    # run monte carlo for ray tracing
+    cp ../results/absorbed.res ../data/absorbed_${j}.res  # save absorbed data
+    # something necessary to transform absorbed.res as input to conduction analysis?
+done          
