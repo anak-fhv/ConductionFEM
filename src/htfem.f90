@@ -13,8 +13,8 @@ module htfem
 	contains
 
 	subroutine fem()
-		integer,parameter :: resfilenum = 101, outfilenum = 102,	&	! Files to store results and other output
-							 nbins = 100, bindim = 3
+		integer,parameter :: resfilenum=101, outfilenum=102,		&	! Files to store results and other output
+							 emfilenum=105,nbins=100, bindim=3
 		integer :: nNodes,nElems,nDoms,nSurfs,elDom,fcBytype,i,j,k,	&	! Prefixes: n=>number, el=>element, fc=>face
 				   meshVals(7),elNodes(4),elByfaces(4),iter				! by=>boundary, sf=>surface, gn=>generation, no=>node
 		integer,allocatable :: doElems(:),byCs(:),stRowPtr(:),		&	! do=>domain, sy=>global system
@@ -22,18 +22,20 @@ module htfem
 							   connTab(:,:),sfElems(:,:)
 		real(8),parameter :: kDefault = 1.d0
 		real(8) :: elVol,tAmbient,gnVal,elK,tc,dlow,dhigh,qBHigh,	&
-				   qBLow,byTemp(4),bySrc(4),gnSrc(4),elVerts(4,3),	&
-				   elSpfns(4,4),elSt(4,4),bySt(4,4),elCp(4,4)
+				   qBLow,absCoeff,byTemp(4),bySrc(4),gnSrc(4),		&
+				   elVerts(4,3),elSpfns(4,4),elSt(4,4),bySt(4,4),	&
+				   elCp(4,4)
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
 							   vF(:),domRhos(:),domCs(:),syCp(:),	&
 							   initGuess(:)
 		character(*),parameter :: objdir = "../obj/",				&
 								  resfile = objdir//"results.out",	&
-								  outfile = objdir//"outputs.out"
+								  outfile = objdir//"outputs.out",	&
+								  emfile = objdir//"emissions.out"
 		character(16),allocatable :: sfFcname(:)
 		logical,parameter :: gnDefault = .false.,trDefault = .false.
-		logical ::	gnUser,trUser,useRK
+		logical ::	gnUser,trUser,useRK,radUser
 		type(noderow) :: noElemPart(4),cpElemPart(4)
 		type(noderow),allocatable :: stNo(:),cpNo(:)
 		type(elementbins),allocatable :: elbins(:)
@@ -158,39 +160,71 @@ module htfem
 
 		if(trUser) then
 !			useRK = .true.
-			call transientsolve(sySt,stRowPtr,stCols,syCp,cpRowPtr,		&
-			cpCols,sySrc,useRK,syTvals,noVerts,connTab,nDoms,doElems)
+			call transientsolve(sySt,stRowPtr,stCols,syCp,cpRowPtr,	&
+			cpCols,sySrc,useRK,syTvals,noVerts,connTab,nDoms,		&
+			doElems)
 		else
 			
 			call getInitialGuess(syTvals,noVerts,initGuess)
-			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,initGuess,	&
-			revals,iter)
+			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,		&
+			initGuess,revals,iter)
 
 			write(*,'(a)') "Solution completed."
-			write(*,'(a,i5,2x,a)') "This program took: ",iter,			&
+			write(*,'(a,i5,2x,a)') "This program took: ",iter,		&
 			"iterations to converge."
 
-			open(resfilenum,file=resfile)
+!			open(resfilenum,file=resfile)
 
 !			do i=1,nNodes
-!				write(resfilenum,'(3(f9.4,2x),f9.4)')noVerts(i,1:3), 	&
+!				write(resfilenum,'(3(f9.4,2x),f9.4)')noVerts(i,1:3),&
 !				revals(i)
 !			end do
 
 !			write(resfilenum,*)
 
-!			call getflowrates(noVerts,connTab,doElems,domKs,sfElems,	&
+!			call getflowrates(noVerts,connTab,doElems,domKs,sfElems,&
 !			reVals,(/1/),(/5/),3,qBLow,qBHigh)
 
 !			if(nDoms .eq. 2) then
-!				write(resfilenum,*) "Sample porosity:",vF(1)/(sum(vF))
+!				write(resfilenum,*)"Sample porosity:",vF(1)/(sum(vF))
 !			end if
 
 !			write(resfilenum,*) "Fluxes:"
 !			write(resfilenum,*) "Boundary low:", qBLow
 !			write(resfilenum,*) "Boundary high:", qBHigh
 
-			close(resfilenum)
+!			close(resfilenum)
+
+			if(radUser) then
+				open(emfilenum,file=emfile)
+				if(typMat == 1) then
+					do i=1,nElems
+						if(doElems(i)==emDom) then
+							call getelementvolumeemission(absCoeff,	&
+							reVals(connTab(i,:)),elEmGlobal(i))
+						end if
+						write(emfilenum,*) i,elEmGlobal
+					end do
+				elseif(typMat == 2) then
+					do i=1,nElems
+						if(doElems(i) == emDom) then
+							if(any(sfElems(i,:)) == emSurf) then
+								emFc = sfElems(minloc(sfElems,		&
+								sfElems==emSurf))
+								call getsurfaceemission(absCoeff,	&
+								noTemps(connTab(i,:)),emFc,elSurfEm)
+							end if
+						end if
+						write(emfilenum,*) i,elSurfEm
+					end do
+				else
+					write(*,'(a,1x,i3,1x,a)') "The material type &
+					&specified is: ", n1, "an unknown. Please &
+					&update the data file to show a correct &
+					&material type."
+				end if
+				close(emfilenum)
+			end if
 
 			call writeresultsvtk(noVerts,connTab,nDoms,doElems,		&
 			reVals)
@@ -201,12 +235,11 @@ module htfem
     subroutine getmeshdata(meshdetails,vertices,connectivity,		&
 	domainelements,surfacenames,surfacefaces)
         integer,parameter :: unitnumber = 103
-		integer,dimension(7) :: meshdetails
-        integer,dimension(:,:),allocatable :: connectivity, surfacefaces
-        integer,dimension(:),allocatable :: domainelements
-        character(len=16),dimension(:),allocatable :: surfacenames
-        real(8),dimension(:,:),allocatable :: vertices
-        real(8),dimension(:),allocatable :: boundaryvalues
+		integer :: meshdetails(7)
+        integer,allocatable :: domainelements(:),connectivity(:,:),	&
+		surfacefaces(:,:)
+        character(len=16),allocatable :: surfacenames(:)
+        real(8),allocatable :: boundaryvalues(:),vertices(:,:)
 
         call openmeshfile(unitnumber, 'a.msh')
         call readmeshdetails(unitnumber,meshdetails)
@@ -233,34 +266,40 @@ module htfem
 		write(*,'(4x,a,1x,i8)') "Number of nodes: ", meshVals(1)
 		write(*,'(4x,a,1x,i8)') "Number of elements: ", meshVals(2)
 		write(*,*)""
-		write(*,'(4x,a)') "System boundaries, not including domain interfaces: "
+		write(*,'(4x,a)') "System boundaries, not including &
+		&domain interfaces: "
 		write(*,*)""
 
 		do i=1,meshVals(7)
 			
 			if(byCs(i) == 1) then
-				write(*,'(4x,a,1x,a)') trim(sfFcname(i)), ": Temperature"
+				write(*,'(4x,a,1x,a)') trim(sfFcname(i)), &
+				&": Temperature"
 			elseif(byCs(i) == 2) then
 				if(sfVals(i) < small) then
-					write(*,'(4x,a,1x,a)') trim(sfFcname(i)), ": Adiabatic"
+					write(*,'(4x,a,1x,a)') trim(sfFcname(i)), &
+					&": Adiabatic"
 				else
-					write(*,'(4x,a,1x,a)') trim(sfFcname(i)), ": Flux"
+					write(*,'(4x,a,1x,a)') trim(sfFcname(i)), &
+					&": Flux"
 				end if
 			elseif(byCs(i) == 3) then
-				write(*,'(4x,a,1x,a)') trim(sfFcname(i)), ": Convective"
+				write(*,'(4x,a,1x,a)') trim(sfFcname(i)), &
+				&": Convective"
 			elseif(byCs(i) == 4) then
 				continue
 			else
 				write(*,'(4x,a)') "For ", trim(sfFcname(i))
-				write(*,'(4x,a)') "Unrecognised boundary condition."
-				write(*,'(4x,a)') "Update datafile.dat inputs."
-				write(*,'(4x,a)') "Now quitting program execution..."
+				write(*,'(4x,a)')"Unrecognised boundary condition."
+				write(*,'(4x,a)')"Update datafile.dat inputs."
+				write(*,'(4x,a)')"Now quitting program execution..."
 				call exit(1)
 			end if
 		end do
 
 		if(gnUser) then
-			write(*,'(4x,a)') "User specified volume generation exists."
+			write(*,'(4x,a)') "User specified volume generation&
+			& exists."
 		end if
 
 		if(trUser) then
@@ -280,9 +319,9 @@ module htfem
 	end subroutine binelement
 
 	subroutine addtoglobaltemperature(Tvals,elnodes,btemp)
-		real(8),dimension(:),intent(inout) :: Tvals
-		real(8),dimension(4) :: btemp
-		integer,dimension(4) :: elnodes
+		real(8),intent(inout) :: Tvals(:)
+		real(8) :: btemp(4)
+		integer :: elnodes(4)
 
 		if(any(btemp.ne.0.0d0)) then
 			Tvals(elnodes) = btemp
@@ -290,10 +329,9 @@ module htfem
 	end subroutine addtoglobaltemperature
 
 	subroutine addtoglobalforce(gF,elnodes,elf)
-		real(8),dimension(:),intent(inout) :: gF
-		real(8),dimension(4) :: elf
-		integer,dimension(4) :: elnodes
-		integer :: i
+		real(8),intent(inout) :: gF(:)
+		real(8) :: elf(4)
+		integer :: i,elnodes(4)
 
 		do i=1,4
 			gF(elnodes(i)) = gF(elnodes(i)) + elf(i)
@@ -301,8 +339,7 @@ module htfem
 	end subroutine addtoglobalforce
 
 	subroutine uniformgeneration(gval,elvol,gcontrib)
-		real(8) :: gval,elvol
-		real(8),dimension(4) :: gcontrib
+		real(8) :: gval,elvol,gcontrib(4)
 
 		gcontrib = gval*(elvol/24.0d0)*(/1,1,1,1/)
 	end subroutine uniformgeneration

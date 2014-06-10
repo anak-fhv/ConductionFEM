@@ -9,36 +9,34 @@ module element
 	contains
 
 	subroutine shapefunctions(ec,v6,sp)
-		real(8),dimension(4,3) :: ec
-		real(8),dimension(4,4) :: sp,vm
-		real(8),dimension(3,3) :: ed
-		real(8) :: v6
 		integer :: i,j,k
+		real(8) :: v6,ed(3,3),ec(4,3),sp(4,4),vm(4,4)
 
-		vm(:,2:4) = ec
-		vm(:,1) = 1.0d0
+		vm = elementjacobian(ec)
 		v6 = abs(det4(vm))
 		call invertcoords(vm)
 		sp = transpose(vm);
 
 	end subroutine shapefunctions
 
+	function elementjacobian(ec) result(elJac)
+		real(8) :: ec(4,3),elJac(4,4)
+
+		elJac(:,2:4) = ec
+		elJac(:,1) = 1.0d0
+	end function elementjacobian
+
 	subroutine invertcoords(vm)
-		real(8),dimension(4,4) :: vm
-		real(8),dimension(256) :: work
-		integer,dimension(4) :: ipiv
 		integer,parameter :: m=4,n=4,lda=4,lwork=256
-		integer :: info
+		integer :: info,ipiv(4)
+		real(8) :: work(256),vm(4,4)
 
 		call dgetrf(m,n,vm,lda,ipiv,info)
 		call dgetri(m,vm,lda,ipiv,work,lwork,info)
 	end subroutine invertcoords
 
 	subroutine elementstiffness(sp,ev,elk,btdb)
-		real(8),dimension(4,4) :: sp,btdb
-		real(8),dimension(4,3) :: bt
-		real(8),dimension(3,4) :: b
-		real(8) :: ev,elk
+		real(8) :: ev,elk,b(3,4),bt(4,3),sp(4,4),btdb(4,4)
 
 		bt = sp(:,2:4)
 		b = transpose(bt)
@@ -75,8 +73,7 @@ module element
 	end subroutine addtoelementbins
 
 	subroutine bfacenodes(fcnum,fcnodes)
-		integer :: fcnum
-		integer,dimension(3) :: fcnodes
+		integer :: fcnum,fcnodes(3)
 
 		if(fcnum == 1) then
 			fcnodes = (/1,2,3/)
@@ -90,9 +87,8 @@ module element
 	end subroutine bfacenodes
 
 	function shapefuncsquaresurfint(fcnodes) result(surfint)
-		integer,dimension(3) :: fcnodes
-		real(8),dimension(4,4) :: surfint
-		integer :: i,j,n1,n2
+		integer :: i,j,n1,n2,fcnodes(3)
+		real(8) :: surfint(4,4)
 
 		surfint = 0.0d0
 		do i=1,3
@@ -109,9 +105,7 @@ module element
 	end function shapefuncsquaresurfint
 
 	function facearea(fc) result(area)
-		real(8),dimension(3,3) :: fc
-		real(8),dimension(3) :: v,w,a
-		real(8) :: area
+		real(8) :: area,v(3),w(3),a(3),fc(3,3)
 
 		v = fc(2,:)-fc(1,:)
 		w = fc(3,:)-fc(1,:)
@@ -119,9 +113,27 @@ module element
 		area = 0.5d0*norm2(a)
 	end function facearea
 
+	subroutine getsurfaceemission(absCoeff,noTemps,emFc,elSurfEm)
+		integer :: emFc,fcNodes(3)
+		real(8),parameter :: sigb = 5.670373e-8
+		real(8) :: absCoeff,cTemp,elSurfEm,noTemps(4),ec(4,3)
+
+		call bfacenodes(emFc,fcNodes)
+		cTemp = sum(noTemps(fcNodes))/3.d0
+		elSurfEm = 2*sigb*absCoeff*(cTemp**4.d0)		
+	end subroutine getsurfaceemission
+
+	subroutine getelementvolumeemission(absCoeff,noTemps,elVolEm)
+		real(8),parameter :: sigb = 5.670373e-8
+		real(8) :: absCoeff,cTemp,elVolEm,noTemps(4)
+
+		cTemp = sum(noTemps)/4.d0
+		elVolEm = 4*sigb*absCoeff*(cTemp**4.d0)
+	end subroutine getelementvolumeemission
+
 	function cross_product_3(v,w) result(a)
-		real(8),dimension(3) :: v,w,a
 		integer :: i
+		real(8) :: v(3),w(3),a(3)
 
 		a(1) = v(2)*w(3)-w(2)*v(3)
 		a(2) = -(v(1)*w(3)-w(1)*v(3))
@@ -129,10 +141,8 @@ module element
 	end function cross_product_3
 
 	function detcreate(ec,pos1,pos2) result(vald)
-		real(8),dimension(4,3) :: ec
-		real(8),dimension(3,3) :: vald
-		integer,dimension(4,3) :: order
-		integer :: pos1,pos2,i,j,k
+		integer :: pos1,pos2,i,j,k,order(4,3)
+		real(8) :: ec(4,3),vald(3,3)
 
 		order(1,:) = (/2,3,4/)
 		order(2,:) = (/3,4,1/)
@@ -146,8 +156,7 @@ module element
 	end function detcreate
 
 	function det3(A) result(d)
-		real(8),dimension(3,3) :: A
-		real(8) :: d
+		real(8) :: d,A(3,3)
 
 		d =   A(1,1)*A(2,2)*A(3,3)  &
             - A(1,1)*A(2,3)*A(3,2)  &
@@ -158,8 +167,7 @@ module element
 	end function det3
 
 	function det4(A) result(d)
-		real(8),dimension(4,4) :: A
-		real(8) :: d
+		real(8) :: d,A(4,4)
 
 		d = A(1,1)*(A(2,2)*(A(3,3)*A(4,4)-A(3,4)*A(4,3))+			&
 			A(2,3)*(A(3,4)*A(4,2)-A(3,2)*A(4,4))+					&
