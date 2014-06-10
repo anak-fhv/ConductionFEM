@@ -16,15 +16,16 @@ module htfem
 		integer,parameter :: resfilenum=101, outfilenum=102,		&	! Files to store results and other output
 							 emfilenum=105,nbins=100, bindim=3
 		integer :: nNodes,nElems,nDoms,nSurfs,elDom,fcBytype,i,j,k,	&	! Prefixes: n=>number, el=>element, fc=>face
-				   meshVals(7),elNodes(4),elByfaces(4),iter				! by=>boundary, sf=>surface, gn=>generation, no=>node
+				   typMat,emDom,emSurf,iter,meshVals(7),elNodes(4),	&	! by=>boundary, sf=>surface, gn=>generation, no=>node
+				   elByfaces(4)
 		integer,allocatable :: doElems(:),byCs(:),stRowPtr(:),		&	! do=>domain, sy=>global system
 							   stCols(:),cpRowPtr(:),cpCols(:),		&
 							   connTab(:,:),sfElems(:,:)
 		real(8),parameter :: kDefault = 1.d0
 		real(8) :: elVol,tAmbient,gnVal,elK,tc,dlow,dhigh,qBHigh,	&
-				   qBLow,absCoeff,byTemp(4),bySrc(4),gnSrc(4),		&
-				   elVerts(4,3),elSpfns(4,4),elSt(4,4),bySt(4,4),	&
-				   elCp(4,4)
+				   qBLow,absCoeff,elVolEm,elSurfEm,byTemp(4),		&
+				   bySrc(4),gnSrc(4),elVerts(4,3),elSpfns(4,4),		&
+				   elSt(4,4),bySt(4,4),elCp(4,4)
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
 							   vF(:),domRhos(:),domCs(:),syCp(:),	&
@@ -201,9 +202,9 @@ module htfem
 					do i=1,nElems
 						if(doElems(i)==emDom) then
 							call getelementvolumeemission(absCoeff,	&
-							reVals(connTab(i,:)),elEmGlobal(i))
+							reVals(connTab(i,:)),elVolEm)
 						end if
-						write(emfilenum,*) i,elEmGlobal
+						write(emfilenum,*) i,elVolEm
 					end do
 				elseif(typMat == 2) then
 					do i=1,nElems
@@ -212,14 +213,14 @@ module htfem
 								emFc = sfElems(minloc(sfElems,		&
 								sfElems==emSurf))
 								call getsurfaceemission(absCoeff,	&
-								noTemps(connTab(i,:)),emFc,elSurfEm)
+								reVals(connTab(i,:)),emFc,elSurfEm)
 							end if
 						end if
 						write(emfilenum,*) i,elSurfEm
 					end do
 				else
 					write(*,'(a,1x,i3,1x,a)') "The material type &
-					&specified is: ", n1, "an unknown. Please &
+					&specified is: ", typMat, "an unknown. Please &
 					&update the data file to show a correct &
 					&material type."
 				end if
