@@ -168,11 +168,18 @@ module htfem
 			
 			call getInitialGuess(syTvals,noVerts,initGuess)
 			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,		&
-			initGuess,revals,iter)
+			initGuess,reVals,iter)
 
 			write(*,'(a)') "Solution completed."
 			write(*,'(a,i5,2x,a)') "This program took: ",iter,		&
 			"iterations to converge."
+
+!--------------------------------------------------------------------
+!	Function to check the effect of face area on the emission value
+!--------------------------------------------------------------------
+			call checkemissiondifference(noVerts,connTab,sfElems,	&
+			reVals,faceEmDiffs)
+
 
 !			open(resfilenum,file=resfile)
 

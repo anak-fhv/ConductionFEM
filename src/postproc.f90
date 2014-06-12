@@ -123,4 +123,35 @@ module postproc
 
 	end subroutine writeresultsvtk
 
+	subroutine checkemissiondifference(noVerts,connTab,sfElems,		&
+	emFc,reVals,faceEmDiffs)
+		integer :: i,j,k,nElems,nNodes,emFc,bFcNo(3),connTab(:,:),	&
+		sfElems(:,:)
+		real(8) :: aC,T1,T2,T3,em1,em2,reVals(:),noVerts(:,:),		&
+		faceEmDiffs(:,:)
+
+		nElems = size(connTab,1)
+		nNodes = size(noVerts,1)
+
+		do i=1,nElems
+			if(any(sfElems(i,:)) == emFace) then
+				do j=1,4
+					if(sfElems(i,j) == emFace) then
+						call bfacenodes(j,bFcNo)
+						bFcNo = connTab(i,bFcNo)
+						fcA = facearea(noVerts(bFcNo,:))
+						T1 = reVals(bFcNo(1))
+						T2 = reVals(bFcNo(2))
+						T3 = reVals(bFcNo(3))
+						em1 = fcA*sigB*aC/(30.d0*(T3-T1))
+						em1 = em1*((T2**6.d0-T3**6.d0)/(T2-T3) + 	&
+						(T2**6.d0-T1**6.d0)/(T1-T2))
+						em2 = fcA*sigB*aC*((T1+T2+T3)/3.d0)**4
+						faceEmDiffs(i,:) = (/em1,em2,em1-em2/)
+					end if
+				end do
+			end if
+		end do
+	end subroutine checkemissiondifference
+
 end module postproc

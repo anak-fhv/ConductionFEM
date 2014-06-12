@@ -1,5 +1,13 @@
 module readmesh
+
     implicit none
+
+	type surfaceData
+		character(len=16) :: sfName
+		integer :: sfNumber
+		integer,allocatable :: elNum(:),fcNum(:)
+	end type surfaceData
+
     contains
 
     subroutine openmeshfile(unum,filename)
@@ -101,5 +109,35 @@ module readmesh
             end do
         end do
     end subroutine readmeshsurfaces
+
+	subroutine readSurfaces(unum,mDets,surfaces)
+		integer :: i,j,k,numSurf,numFc,ct,cs,unum,mDets(7),temp(10)
+		type(surfaceData),allocatable :: surfaces(:)
+
+		numSurf = mDets(7)
+		allocate(surfaces(mDets(7)))
+		do i=1,numSurf
+			surfaces%sfNumber = i
+            read(unum,'(i8,1x,a)') numFc, surfaces(i)%sfName
+			allocate(surfaces(i)%elNum(numFc))
+			allocate(surfaces(i)%fcNum(numFc))
+			if(mod(numFc,5) == 0) then
+                cs = numFc/5
+            else
+                cs = 1 + numFc/5
+            end if
+			ct = 0
+            do j=1,cs
+                read(unum,'(5(2x,i8,1x,i1))') temp
+                do k=1,5
+                    if(temp(2*k-1) /= 0) then
+						ct = ct+1
+                        surfaces(i)%elNum(ct) = temp(2*k-1)
+						surfaces(i)%fcNum(ct) = temp(2*k)
+                    end if
+                end do
+            end do
+		end do
+	end subroutine readSurfaces
 
 end module readmesh
