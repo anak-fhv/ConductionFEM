@@ -16,7 +16,7 @@ module htfem
 		integer,parameter :: resfilenum=101, outfilenum=102,		&	! Files to store results and other output
 							 emfilenum=105,nbins=100, bindim=3
 		integer :: nNodes,nElems,nDoms,nSurfs,elDom,fcBytype,i,j,k,	&	! Prefixes: n=>number, el=>element, fc=>face
-				   typMat,emDom,emSurf,iter,meshVals(7),elNodes(4),	&	! by=>boundary, sf=>surface, gn=>generation, no=>node
+				   typMat,emDom,emFc,iter,meshVals(7),elNodes(4),	&	! by=>boundary, sf=>surface, gn=>generation, no=>node
 				   elByfaces(4)
 		integer,allocatable :: doElems(:),byCs(:),stRowPtr(:),		&	! do=>domain, sy=>global system
 							   stCols(:),cpRowPtr(:),cpCols(:),		&
@@ -40,11 +40,12 @@ module htfem
 		type(noderow) :: noElemPart(4),cpElemPart(4)
 		type(noderow),allocatable :: stNo(:),cpNo(:)
 		type(elementbins),allocatable :: elbins(:)
+		type(surfaceData),allocatable :: surfaces(:)
 
 		write(*,'(a)') "Now reading mesh file..."
 
 		call getmeshdata(meshVals,noVerts,connTab,doElems,			&
-		sfFcname,sfElems)
+		sfFcname,sfElems,surfaces)
 
 		write(*,'(a)') "Meshdetails received."
 
@@ -177,16 +178,23 @@ module htfem
 !--------------------------------------------------------------------
 !	Function to check the effect of face area on the emission value
 !--------------------------------------------------------------------
-			call checkemissiondifference(noVerts,connTab,sfElems,	&
-			reVals,faceEmDiffs)
+!			call checkemissiondifference(noVerts,connTab,sfElems,	&
+!			13,reVals)
 
 
-!			open(resfilenum,file=resfile)
+!--------------------------------------------------------------------
+!	Function to write facewise emission values for a given surface
+!--------------------------------------------------------------------
 
-!			do i=1,nNodes
-!				write(resfilenum,'(3(f9.4,2x),f9.4)')noVerts(i,1:3),&
-!				revals(i)
-!			end do
+			call writesurfaceemission(noVerts,connTab,reVals,		&
+			surfaces(13))
+
+			open(resfilenum,file=resfile)
+
+			do i=1,nNodes
+				write(resfilenum,'(3(f9.4,2x),f9.4)')noVerts(i,1:3),&
+				revals(i)
+			end do
 
 !			write(resfilenum,*)
 
@@ -201,38 +209,42 @@ module htfem
 !			write(resfilenum,*) "Boundary low:", qBLow
 !			write(resfilenum,*) "Boundary high:", qBHigh
 
-!			close(resfilenum)
+			close(resfilenum)
 
-			if(radUser) then
-				open(emfilenum,file=emfile)
-				if(typMat == 1) then
-					do i=1,nElems
-						if(doElems(i)==emDom) then
-							call getelementvolumeemission(absCoeff,	&
-							reVals(connTab(i,:)),elVolEm)
-						end if
-						write(emfilenum,*) i,elVolEm
-					end do
-				elseif(typMat == 2) then
-					do i=1,nElems
-						if(doElems(i) == emDom) then
-							if(any(sfElems(i,:)) == emSurf) then
-								emFc = sfElems(minloc(sfElems,		&
-								sfElems==emSurf))
-								call getsurfaceemission(absCoeff,	&
-								reVals(connTab(i,:)),emFc,elSurfEm)
-							end if
-						end if
-						write(emfilenum,*) i,elSurfEm
-					end do
-				else
-					write(*,'(a,1x,i3,1x,a)') "The material type &
-					&specified is: ", typMat, "an unknown. Please &
-					&update the data file to show a correct &
-					&material type."
-				end if
-				close(emfilenum)
-			end if
+!--------------------------------------------------------------------
+!	Function to get element emissions
+!--------------------------------------------------------------------
+
+!			if(radUser) then
+!				open(emfilenum,file=emfile)
+!				if(typMat == 1) then
+!					do i=1,nElems
+!						if(doElems(i)==emDom) then
+!							call getelementvolumeemission(absCoeff,	&
+!							reVals(connTab(i,:)),elVolEm)
+!						end if
+!						write(emfilenum,*) i,elVolEm
+!					end do
+!				elseif(typMat == 2) then
+!					do i=1,nElems
+!						if(doElems(i) == emDom) then
+!							if(any(sfElems(i,:) == emSurf)) then
+!								emFc = sfElems(minloc(sfElems,		&
+!								sfElems==emSurf))
+!								call getsurfaceemission(absCoeff,	&
+!								reVals(connTab(i,:)),emFc,elSurfEm)
+!							end if
+!						end if
+!						write(emfilenum,*) i,elSurfEm
+!					end do
+!				else
+!					write(*,'(a,1x,i3,1x,a)') "The material type &
+!					&specified is: ", typMat, "an unknown. Please &
+!					&update the data file to show a correct &
+!					&material type."
+!				end if
+!				close(emfilenum)
+!			end if
 
 			call writeresultsvtk(noVerts,connTab,nDoms,doElems,		&
 			reVals)
@@ -241,13 +253,14 @@ module htfem
 	end subroutine fem
 
     subroutine getmeshdata(meshdetails,vertices,connectivity,		&
-	domainelements,surfacenames,surfacefaces)
+	domainelements,surfacenames,surfacefaces,surfaces)
         integer,parameter :: unitnumber = 103
 		integer :: meshdetails(7)
         integer,allocatable :: domainelements(:),connectivity(:,:),	&
 		surfacefaces(:,:)
         character(len=16),allocatable :: surfacenames(:)
         real(8),allocatable :: boundaryvalues(:),vertices(:,:)
+		type(surfaceData),allocatable :: surfaces(:)
 
         call openmeshfile(unitnumber, 'a.msh')
         call readmeshdetails(unitnumber,meshdetails)
@@ -256,7 +269,7 @@ module htfem
 		connectivity)
         call readmeshdomains(unitnumber,meshdetails,domainelements)
         call readmeshsurfaces(unitnumber,meshdetails,surfacefaces,	&
-		surfacenames)
+		surfacenames,surfaces)
         call closemeshfile(unitnumber)
     end subroutine getmeshdata
 

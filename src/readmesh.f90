@@ -81,29 +81,38 @@ module readmesh
         end do
     end subroutine readmeshdomains
 
-    subroutine readmeshsurfaces(unum,meshdetails,sfaces,surfacenames)
-        integer :: unum,surfnum,countersize,i,j,k,currentsize,		&
-		newsize, oldsize
-        integer, dimension(7) :: meshdetails
-        integer, dimension(10) :: tempmat
-        integer, dimension(:,:), allocatable :: sfaces
-        character(len=16), dimension(:), allocatable :: surfacenames
+    subroutine readmeshsurfaces(unum,mDets,sfaces,surfNames,surfaces)
+        integer :: unum,nSurf,nElems,numFc,countersize,ct,i,j,k,	&
+		mDets(7),temp(10)
+        integer, allocatable :: sfaces(:,:)
+        character(len=16), allocatable :: surfNames(:)
+		type(surfaceData),allocatable :: surfaces(:)
 
-        allocate(surfacenames(meshdetails(7)))
-        allocate(sfaces(meshdetails(2),4))
+		nElems = mDets(2)
+		nSurf = mDets(7)
+        allocate(surfNames(nSurf))
+        allocate(sfaces(nElems,4))
+		allocate(surfaces(nSurf))
         sfaces = 0
-        do i=1,meshdetails(7)
-            read(unum,'(i8,1x,a)') surfnum, surfacenames(i)
-            if(mod(surfnum,5) == 0) then
-                countersize = surfnum/5
+        do i=1,mDets(7)
+            read(unum,'(i8,1x,a)') numFc, surfNames(i)
+			surfaces(i)%sfName = surfNames(i)
+			allocate(surfaces(i)%elNum(numFc))
+			allocate(surfaces(i)%fcNum(numFc))			
+            if(mod(numFc,5) == 0) then
+                countersize = numFc/5
             else
-                countersize = 1 + surfnum/5
+                countersize = 1 + numFc/5
             end if
+			ct = 0
             do j=1,countersize
-                read(unum, '(5(2x,i8,1x,i1))') tempmat
+                read(unum, '(5(2x,i8,1x,i1))') temp
                 do k=1,5
-                    if(tempmat(2*k-1) /= 0) then
-                        sfaces(tempmat(2*k-1),tempmat(2*k)) = i
+                    if(temp(2*k-1) /= 0) then
+                        sfaces(temp(2*k-1),temp(2*k)) = i
+						ct = ct+1
+                        surfaces(i)%elNum(ct) = temp(2*k-1)
+						surfaces(i)%fcNum(ct) = temp(2*k)
                     end if
                 end do
             end do

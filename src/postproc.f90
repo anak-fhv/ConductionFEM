@@ -1,6 +1,7 @@
 module postproc
 
 	use element
+	use readmesh
 	implicit none
 
 	contains
@@ -124,34 +125,76 @@ module postproc
 	end subroutine writeresultsvtk
 
 	subroutine checkemissiondifference(noVerts,connTab,sfElems,		&
-	emFc,reVals,faceEmDiffs)
+	emFc,reVals)
+		integer,parameter :: emFNo = 268
 		integer :: i,j,k,nElems,nNodes,emFc,bFcNo(3),connTab(:,:),	&
 		sfElems(:,:)
-		real(8) :: aC,T1,T2,T3,em1,em2,reVals(:),noVerts(:,:),		&
-		faceEmDiffs(:,:)
+		real(8),parameter :: sigb = 5.670373e-8
+		real(8) :: aC,T1,T2,T3,em1,em2,fcA,reVals(:),noVerts(:,:)
+		character(*),parameter :: objdir = "../obj/",				&
+		emFile = objdir//"faceEmissions.out"
 
 		nElems = size(connTab,1)
 		nNodes = size(noVerts,1)
+		aC = 1.d0
 
+		open(emFNo,file=emFile)
 		do i=1,nElems
-			if(any(sfElems(i,:)) == emFace) then
+			if(any(sfElems(i,:) == emFc)) then
 				do j=1,4
-					if(sfElems(i,j) == emFace) then
+					if(sfElems(i,j) == emFc) then
 						call bfacenodes(j,bFcNo)
 						bFcNo = connTab(i,bFcNo)
+!						if(mod(i,9).eq.0) then
+!							print *, "Boundary face nodes: ",bFcNo
+!						end if
 						fcA = facearea(noVerts(bFcNo,:))
 						T1 = reVals(bFcNo(1))
 						T2 = reVals(bFcNo(2))
 						T3 = reVals(bFcNo(3))
-						em1 = fcA*sigB*aC/(30.d0*(T3-T1))
+						em1 = 2.d0*fcA*sigB*aC/(30.d0*(T3-T1))
 						em1 = em1*((T2**6.d0-T3**6.d0)/(T2-T3) + 	&
 						(T2**6.d0-T1**6.d0)/(T1-T2))
 						em2 = fcA*sigB*aC*((T1+T2+T3)/3.d0)**4
-						faceEmDiffs(i,:) = (/em1,em2,em1-em2/)
+						write(emFNo,'(i8,1x,i8,1x,7(f15.8,1x))') i,j,fcA,T1,T2,T3,em1,em2,(em1-em2)
 					end if
 				end do
 			end if
 		end do
+		close(emFNo)
 	end subroutine checkemissiondifference
+
+	subroutine writesurfaceemission(noVerts,connTab,reVals,emSurf)
+		integer,parameter :: emFNo = 268
+		integer :: i,j,k,nEmFc,emEl,emElFc,bFcNo(3),connTab(:,:)
+		real(8),parameter :: sigb = 5.670373e-8, kel = 273.15d0
+		real(8) :: aC,T1,T2,T3,emVal,fcA,reVals(:),noVerts(:,:)
+		character(*),parameter :: objdir = "../obj/",				&
+		emFile = objdir//"faceEmissions.out"
+		type(surfaceData) :: emSurf
+
+		nEmFc = size(emSurf%elNum,1)
+		aC = 1.d0
+		open(emFNo,file=emFile)
+		write(emFNo,'(i8)') nEmFc
+		do i=1,nEmFc
+			emEl = emSurf%elNum(i)
+			emElFc = emSurf%fcNum(i)
+			call bfacenodes(emElFc,bFcNo)
+			bFcNo = connTab(emEl,bFcNo)
+			fcA = facearea(noVerts(bFcNo,:))
+			T1 = reVals(bFcNo(1)) + kel
+			T2 = reVals(bFcNo(2)) + kel
+			T3 = reVals(bFcNo(3)) + kel
+!			if(mod(i,100).eq.0) then
+!				write(*,'(3(a,2x,f9.4,2x))') "T1: ",T1,"T2: ",T2,"T3: ",T3
+!			end if
+			emVal = fcA*sigB*aC*((T1+T2+T3)/3.d0)**4
+			write(emFNo,'(i8,1x,i2,1x,f15.8,1x)') emEl,emElFc,emVal
+		end do
+
+		close(emFNo)
+				
+	end subroutine writesurfaceemission
 
 end module postproc
