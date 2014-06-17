@@ -14,7 +14,8 @@ module htfem
 
 	subroutine fem()
 		integer,parameter :: resfilenum=101, outfilenum=102,		&	! Files to store results and other output
-							 emfilenum=105,nbins=100, bindim=3
+							 emfilenum=105,nbins=100, bindim=3,		&
+							 srcfilenum=106
 		integer :: nNodes,nElems,nDoms,nSurfs,elDom,fcBytype,i,j,k,	&	! Prefixes: n=>number, el=>element, fc=>face
 				   typMat,emDom,emFc,iter,meshVals(7),elNodes(4),	&	! by=>boundary, sf=>surface, gn=>generation, no=>node
 				   elByfaces(4)
@@ -33,7 +34,8 @@ module htfem
 		character(*),parameter :: objdir = "../obj/",				&
 								  resfile = objdir//"results.out",	&
 								  outfile = objdir//"outputs.out",	&
-								  emfile = objdir//"emissions.out"
+								  emfile = objdir//"emissions.out",	&
+								  srcfile = objdir//"radsource.out"
 		character(16),allocatable :: sfFcname(:)
 		logical,parameter :: gnDefault = .false.,trDefault = .false.
 		logical ::	gnUser,trUser,useRK,radUser
@@ -159,6 +161,15 @@ module htfem
 
 		write(*,*)""
 		write(*,'(a)') "Entered solution step..."
+
+		if(radUser) then
+			open(srcfilenum,file=srcfile)
+			do i=1,nNodes
+				read(srcfilenum,*) noSrcRad
+				sySrc(i) = sySrc(i)+noSrcRad
+			end do
+			close(srcfilenum)
+		end if
 
 		if(trUser) then
 !			useRK = .true.
