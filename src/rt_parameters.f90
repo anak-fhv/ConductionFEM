@@ -7,27 +7,33 @@ module rt_parameters
     implicit none
     
     type :: tetraElement
-        integer, dimension(4)    :: vertexIds=0   ! ID ofvertex vertices of the tetra element
+        integer, dimension(4)   :: vertexIds=0   ! ID ofvertex vertices of the tetra element
         
-        integer, dimension(4,2)  :: neighbors=0   ! information about of neighboring elements
+        integer, dimension(4,2) :: neighbors=0   ! information about of neighboring elements
         ! In above array the row index relates to the 4 faces of the element. 
         ! The 1st column contains the ID of the neighboring element or surface. In case of
-        ! a surface the ID = ID_of_surface + Number_of_Tetraelements.
+        ! a surface the ID = ID_of_tetra.
         ! The 2nd column contains the face of the neighboring element which is identical to
-        ! the face given by the row index. In case a surface is the neighbor the entry is -1.
+        ! the face given by the row index. In case a surface is the neighbor the entry is -ID_of_surface.
         
         !real(dp), dimension(4,4) :: shape_funcs ! shape functions
         
-        integer                  :: domain=0      ! to which domain the tetra belongs
+        integer                 :: domain = 0    ! to which domain the tetra belongs
+!         real(dp)                :: powerAvail = 0.0  ! power to be emitted from the tetra (used for tomo-setup)
+        integer                 :: nrays = 0     ! number of rays emitted
+!         integer                 :: erays = 0     ! number of rays emitted so far
+!         real(dp)                :: ppray = 0.0   ! power per ray
     end type tetraElement
     
     type :: emissionSurface
         character(len=100)                   :: name ! name of emission surface
-        real(dp), dimension(:), allocatable  :: area ! cumsum of area of the faces on the surface of emission
-        real(dp)                             :: totalarea ! totalarea of surface
+        real(dp), dimension(:), allocatable  :: value ! cumsum of value of the faces on the surface of emission
+        real(dp)                             :: totalvalue ! totalvalue of surface
         integer, dimension(:,:), allocatable :: elemData ! (:,1) number of tetra-element      
                                                          ! (:,2) face of tetra-element which is on the surface
-        integer                              :: originalID ! id used for tetraeder connections                                                 
+        integer                              :: originalID ! id used for tetraeder connections             
+        real(dp)                             :: power  ! total power to be emitted from the surface       
+        integer                              :: nrays  ! number of rays to be emitted from surface
     end type
     
     type :: rayContainer  ! contains information on the traced ray
@@ -37,20 +43,20 @@ module rt_parameters
         real(dp)               :: length = 0.0_dp      ! distance travelled
         real(dp)               :: power = 1.0_dp       ! current power of ray
         real(dp)               :: wavelength = 1.0_dp  ! wavelength
-        logical                :: colorchange = .false. ! flag whether color change has happened
+        logical                :: colorchange = .false. ! flag whether color change has happened 
     end type
     
     type :: runstatistic ! statistics for empirical runs
-	    real(dp) :: maxvalue, mean, var, rms, logvar,logmean,logmeannormal, logvarnormal
+	    real(dp) :: maxvalue, mean, var, rms, logvar,logmean,logmeannormal, logvarnormal, dist
 	    integer  :: entries
     end type
     
     ! some gloabl variables
-    real(dp), dimension(:), allocatable              :: absorbed    ! field containing info about absorptio
+    real(dp), dimension(:), allocatable              :: powerNodal  ! power values distributed to nodes
     real(dp), dimension(:,:), allocatable            :: vertices    ! filed of all vertices
     type(tetraElement), dimension(:), allocatable    :: tetraData   ! type for tetraeder information
     type(emissionSurface), dimension(:), allocatable :: emSurf      ! emission surfaces
-    real(dp), dimension(:), allocatable              :: temperature ! temperature data for tomo-based setup
+    real(dp), dimension(:,:), allocatable              :: source      ! emission for faces on interface for tomo-based setup
     real(dp), dimension(:,:), allocatable            :: spectrumB   ! blue spectrum data for led setup
     real(dp), dimension(:,:), allocatable            :: spectrumY   ! yellow spectrum data for led setup
     
@@ -78,55 +84,6 @@ module rt_parameters
 	    psi = 2.0_dp*pi*myRandom(0)		
         
     end subroutine PhaseFunction
-    
-    
-    ! select an emission surface
-     integer function emsIDfun(k)
-	    
-	    real(dp)            :: r, totalarea
-	    integer             :: i
-	    integer, intent(in) :: k
-	    
-! 	    ! the code below selects an emission surface based on
-! 	    ! the overall area of all emission surfaces
-! 	    ! get totalarea of all emission surfaces
-	    totalarea = sum(emSurf%totalarea)
-	    r = myRandom(0)
-		
-		do emsIDfun = 1,size(emSurf)
-			if (r <= sum(emSurf(1:emsIDfun)%totalarea)/totalarea) exit
-	    end do
- 
-! 		r = real(k)/real(nrays)
-! 
-! 		if (r < 1/3 ) then
-! 			emsIDfun = 1
-! 	    elseif (r < 2/3) then 
-! 		    emsIDfun = 2
-! 		else
-! 		    emsIDfun = 3
-! 		end if
-		
-	end function emsIDfun
-	
-	
-	! determine power of a single ray
-	real(dp) function RayPowerFun(temp, factor, bbfrac)
-		
-		real(dp), intent(in) :: temp   ! temperature (in K)
-		real(dp), intent(in) :: factor ! volume- or area-dependent factor 
-		real(dp), intent(in) :: bbfrac ! hemispherical emittance
-		
-		if (RT_setup .eq. 'led') then
-			! setup if power is independent of location and temperature
-			RayPowerFun = Etotal/nrays
-		else
-			! setup if temperature-dependence exist
-			RayPowerFun = 4*bbfrac*sbk*temp**4*factor
-		end if
-		
-	end function RayPowerFun
-	
 	
 	! get mean free pathlength
 	real(dp) function GetPathLength()

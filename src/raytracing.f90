@@ -35,13 +35,13 @@ program raytracing
     
     ! just some output
     open(unit=101, file=resFolder//"absorbed.res", status='replace')   
-	write(101,'(e14.6)') (absorbed(i), i =1, size(absorbed))
+	write(101,'(e14.6)') (powerNodal(i), i =1, size(powerNodal))
     close(unit=101)
 !   
     write(*,*) "power emitted:", Etotal  
-    write(*,*) "power absorbed:", sum(absorbed)
+    write(*,*) "power absorbed:", sum(powerNodal)
     write(*,*) "power leaving:", Eleft
-    write(*,*) "difference:", Etotal - Eleft - sum(absorbed)
+    write(*,*) "difference:", Etotal + Eleft
     write(*,*)
     write(*,*) "Eblue:", Eblue
     write(*,*) "Eyellow:", Eyellow
