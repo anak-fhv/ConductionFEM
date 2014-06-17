@@ -183,14 +183,14 @@ module postproc
 			call bfacenodes(emElFc,bFcNo)
 			bFcNo = connTab(emEl,bFcNo)
 			fcA = facearea(noVerts(bFcNo,:))
-			T1 = reVals(bFcNo(1)) + kel
-			T2 = reVals(bFcNo(2)) + kel
-			T3 = reVals(bFcNo(3)) + kel
+			T1 = reVals(bFcNo(1))		! + kel
+			T2 = reVals(bFcNo(2)) 		! + kel
+			T3 = reVals(bFcNo(3)) 		! + kel
 !			if(mod(i,100).eq.0) then
 !				write(*,'(3(a,2x,f9.4,2x))') "T1: ",T1,"T2: ",T2,"T3: ",T3
 !			end if
 			emVal = fcA*sigB*aC*((T1+T2+T3)/3.d0)**4
-			write(emFNo,'(i8,1x,i2,1x,f15.8,1x)') emEl,emElFc,emVal
+			write(emFNo,'(i8,1x,i2,1x,e20.8,1x)') emEl,emElFc,emVal
 		end do
 
 		close(emFNo)

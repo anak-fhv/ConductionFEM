@@ -26,7 +26,7 @@ module htfem
 		real(8) :: elVol,tAmbient,gnVal,elK,tc,dlow,dhigh,qBHigh,	&
 				   qBLow,absCoeff,elVolEm,elSurfEm,byTemp(4),		&
 				   bySrc(4),gnSrc(4),elVerts(4,3),elSpfns(4,4),		&
-				   elSt(4,4),bySt(4,4),elCp(4,4)
+				   elSt(4,4),bySt(4,4),elCp(4,4),noSrcRad
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
 							   vF(:),domRhos(:),domCs(:),syCp(:),	&
@@ -144,6 +144,15 @@ module htfem
 !			call readinitialvalues(syTvals)
 			syTvals = 100.d0
 		else
+		radUser = .true.
+		if(radUser) then
+			open(srcfilenum,file=srcfile)
+			do i=1,nNodes
+				read(srcfilenum,*) noSrcRad
+				sySrc(i) = sySrc(i)+noSrcRad
+			end do
+			close(srcfilenum)
+		end if
 			call setupfinalequations(stNo,sySrc,syTvals)
 		end if
 
@@ -162,14 +171,6 @@ module htfem
 		write(*,*)""
 		write(*,'(a)') "Entered solution step..."
 
-		if(radUser) then
-			open(srcfilenum,file=srcfile)
-			do i=1,nNodes
-				read(srcfilenum,*) noSrcRad
-				sySrc(i) = sySrc(i)+noSrcRad
-			end do
-			close(srcfilenum)
-		end if
 
 		if(trUser) then
 !			useRK = .true.
