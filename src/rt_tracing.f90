@@ -15,8 +15,8 @@ module tracing
     subroutine start_tracing
     
         type(rayContainer) :: ray
-        real(dp)           :: t1, t2, pot
-        integer            :: io_error, write_error, k, alloc_status
+        real(dp)           :: t1, t2, pot, totalpower
+        integer            :: io_error, write_error, k, alloc_status, i
         character(len=100) :: leaveFname, d_file1, d_file2, tmp 
         type(runstatistic) :: stats
         
@@ -41,9 +41,10 @@ module tracing
         call check_io_error(io_error,"closing debug-file 1",82)
              
         ! initialize vector for absorption
-        allocate(absorbed(size(vertices,1)), stat=alloc_status)
-        call check_alloc_error(alloc_status, "absorbed vector")
-        absorbed = 0.0_dp
+        allocate(powerNodal(size(vertices,1)), stat=alloc_status)
+        call check_alloc_error(alloc_status, "powerNodal vector")
+        powerNodal = 0.0_dp
+
         
         ! do raytracing
         write(*,*)
@@ -55,8 +56,8 @@ module tracing
         pot = 0.0
 	    do k = 1,nrays
 		    
+		    ! creating files for raytracing output
 		    if (k <= nRayPaths) then
-			    ! file for tracing single ray (should be commented if large number of rays are considered)
 			    write(tmp,'(i5.5)') k
 			    d_file2 = objFolder//trim(data_fname)//"-raydata"//trim(tmp)//".res" 
 		        open(unit=81, file=d_file2, action='write', status='replace', iostat=io_error)       
@@ -68,7 +69,7 @@ module tracing
 		    end if
 		    
 		    ! create ray
-	        call CreateRay(emSurf(emsIDfun(k)), ray, d_file1)
+	        call CreateRay(k, ray, d_file1)
 
 	        ! assign energy to a ray and trace it
             if (k <= nRayPaths) call WriteRayData(ray, d_file2)
@@ -77,7 +78,7 @@ module tracing
 	        ! catch some statistics
 	        if (k .eq. nint(10**(pot))) then
 	            call runStats(stats)
-		        write(*,'(i10,1x,i10,1x,e14.6,1x,e14.6,1x,e14.6,1x,e14.6)') k, stats%entries, stats%maxvalue, stats%logmeannormal, stats%rms, stats%logvarnormal 
+		        write(*,'(i10,1x,i10,1x,e14.6,1x,e14.6,1x,e14.6,1x,e14.6)') k, stats%entries, stats%maxvalue, stats%logmeannormal, stats%dist, stats%logvarnormal 
 		        if (k .le. 10) pot = pot + 0.2
 		        if (k .gt. 10) pot = pot + 0.1
 		    end if    
@@ -95,100 +96,39 @@ module tracing
     ! given an emission surface, the following subroutine performs the following steps:
     ! 1. select a face on the emission surface by roulette wheel selection
     ! 2. select a point within the triangular face based on 2 random numbers 
-    !    (uses triangle and uniform distribution)
     ! 3. select a random direction    
-    subroutine CreateRay(ems, ray, fname)
+    subroutine CreateRay(k, ray, fname)
 
-        type(emissionSurface), intent(in) :: ems
-        type(rayContainer), intent(out)   :: ray
-        character(len=*), intent(in)      :: fname
-        integer                           :: i, j
-        integer, dimension(1)             :: id
-        integer, dimension(3)             :: vertIDs 
-        real(dp)                          :: psi, theta, area, tc1, tc2, cTemperature
-        real(dp), dimension(3)            :: p1, p2, p3, dir1, ndir 
-        type(tetraElement)                :: tetra
-        real(dp), dimension(3,3)          :: M
-        real(dp), dimension(3,4)          :: corners
+        integer, intent(in)             :: k
+        type(rayContainer), intent(out) :: ray
+        character(len=*), intent(in)    :: fname
+        integer                         :: i, j, tmp
+        integer, dimension(1)           :: id 
+        real(dp)                        :: theta, ratio, totalpower 
+        type(tetraElement)              :: tetra
+        type(emissionSurface)           :: ems
+        real(dp), dimension(3,3)        :: M
+        real(dp), dimension(3,4)        :: corners
         
-        ! decision whether to start at the beginning or end of the list (just for speed)
-        psi = myRandom(0)
-        if (psi > 0.5) then
-            do i = size(ems%area)-1,1,-1
-                if (ems%area(i) < psi) exit
-            end do
-            ray%tetraID = ems%elemData(i+1,1)
-            ray%faceID = ems%elemData(i+1,2)
-        else           
-            do i = 1,size(ems%area)
-                if (ems%area(i) > psi) exit
-            end do
-            ray%tetraID = ems%elemData(i,1)
-            ray%faceID = ems%elemData(i,2)
-        end if
-	    tetra = tetraData(ray%tetraID)
-    
-        ! get vertices for the selected face on the surface
-        call return_facevertIds(ray%faceID,vertIDs)  
-        call return_coords(tetra, vertIDs, p1, p2, p3)
         
-        ! get random value for two tetra-coordinates
-        tc1 = 1.0_dp - sqrt(1-myRandom(0))
-        tc2 = (1.0_dp-tc1)*myRandom(0)
-        
-        ! get points from triangle coordinates
-        ray%point = tc1*p1 + tc2*p2 + (1.0_dp - tc1 - tc2)*p3 
-        
-        ! test whether point is indeed in triangle
-        if (PointInside(p1,p2,p3,ray%point) .eqv. .false.) then
-            write(*,*) "Emission Point not in chosen face!"
-            stop
-        end if
-    
-        ! choose ray direction
-!         ndir = cross(dir1,dir2)  ! normal vector of triangle face
-        ndir = cross(p2-p1, p3-p1)
-        area = 0.5_dp*norm(ndir) ! area of triangle
-        ndir = ndir/norm(ndir)
-        
-        ! check whether normal vector points inwards or outwards
-        if (dot_product(ndir, vertices(tetra%vertexIds(10-sum(vertIDs)),:) - ray%point) < 0) ndir = -ndir
-
-        ! rotate normal vector into direction defined by psi and theta
-!         dir1 = dir1/b
-        dir1 = (p2-p1)/norm(p2-p1)
-        theta = asin(sqrt(myRandom(0)))
-        psi = 2.0_dp*pi*myRandom(0) 	         
-        ray%direction = sin(theta)*(cos(psi)*dir1 + sin(psi)*cross(ndir, dir1)) + cos(theta)*ndir
-        
-        ! power of the ray
-        ! ray%power = RayPowerFun(tc1*tData(tetra%vertexIds(vertIDs(1))) + tc2*tData(tetra%vertexIds(vertIDs(2))) + (1-tc1-tc2)*tData(tetra%vertexIds(vertIDs(3))),area)
-        if (RT_setup .eq. 'tomo') then
-	        cTemperature = tc1*temperature(tetra%vertexIds(vertIDs(1))) + tc2*temperature(tetra%vertexIds(vertIDs(2))) + (1.0_dp - tc1- tc2)*temperature(tetra%vertexIds(vertIDs(3)))
-	        !write(*,*) cTemperature
-	        
-	        ! get tetraeder vertex points
-			forall(i = 1:4) corners(:,i) = vertices(tetra%vertexIds(i),:)
-		
-			! assemble matrix describing transformation from tetra-coords to cartesian-coords
-		    do  i = 1,3
-			    do j = 1,3
-				    M(j,i) = corners(j,i) - corners(j,4) 
-				end do
-		    end do
-	        
-	        ! emmissive power depends on volume per ray (below is rough estimate) and determinante of jacobian
-	        if (count(ems%name == ignoredSurfaces) == 0) then
-		        ray%power = RayPowerFun(cTemperature,1860867.0_dp/real(nrays)*dot_product(M(:,1), cross(M(:,2), M(:,3))), 1.0_dp)
-		    else
-			    ray%power = RayPowerFun(cTemperature,1860867.0_dp/real(nrays)*dot_product(M(:,1), cross(M(:,2), M(:,3))), alpha)
-			end if
-        
-            Etotal = Etotal  +  ray%power
-            
-        elseif (RT_setup .eq. 'led') then
-	        ray%power = RayPowerFun(1.0_dp,1.0_dp,1.0_dp)  ! call with dummy variables
-	        ! wavelength
+        ! get emission surface and choose tetra on face
+        if (RT_setup .eq. 'led') then
+			
+			! led setup (contains only 1 emission surface)
+			ems = emSurf(1)
+			
+			! choose tetra and corresponding face based on random value
+			! assumption: temperature at emission surface is constant and equal everywhere
+			call emFace(ems, ray)
+			
+			! get point and direction
+			tetra = tetraData(ray%tetraID)
+			call emPoint(ray, tetra, ems)
+			
+			! ray power
+	        ray%power = ems%power/nrays
+			
+			! wavelength through linear interpolation
 	        theta = myRandom(0)
             id = minloc(abs(spectrumB(:,2) - theta))
             if (abs(spectrumB(id(1),2) - theta) .le. 1e-13_dp) then
@@ -199,14 +139,55 @@ module tracing
 			    ray%wavelength = linInterpol(spectrumB(id(1),2),spectrumB(id(1)+1,2),spectrumB(id(1),1),spectrumB(id(1)+1,1),theta)
 			end if
 			
-! 			write(*,*) ray%wavelength, theta, spectrumB(id,:)
+		elseif (RT_setup .eq. 'tomo') then
 			
-        end if
+			! emission surface selection is power ratio based 
+			if (k .le. floor(emSurf(1)%power*nrays/sum(emSurf%power))) then
+				ems = emSurf(1)
+				if ((k==1) .or. (k==floor(emSurf(1)%power*nrays/sum(emSurf%power)))) write(*,*) k, 1, k*sum(emSurf%power)/nrays
+		    elseif (k .le. floor(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power))) then 
+		        ems = emSurf(2)
+		        if ((k==ceiling(emSurf(1)%power*nrays/sum(emSurf%power))) .or. (k==floor(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power)))) write(*,*) k, 2, k*sum(emSurf%power)/nrays
+			else
+			    ems = emSurf(3)
+			    if ((k==ceiling(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power))) .or. (k==nrays)) write(*,*) k, 1, k*sum(emSurf%power)/nrays
+			end if
+			
+			! choose tetra and corresponding face based on random value 
+			! (roulette wheel selection)
+			call emFace(ems, ray)
+			
+			! ray power
+			ray%power = sum(emSurf%power)/nrays
+			
+			! move to other domain in case of emission from interface
+			if (any(ems%name == ignoredSurfaces) .eqv. .true.) then
+				tmp = ray%tetraID
+				ray%tetraID = tetraData(tmp)%neighbors(ray%faceID,1)
+				ray%faceID = tetraData(tmp)%neighbors(ray%faceID,2)
+				
+				if (tetraData(ray%tetraID)%domain .ne. 2) then
+					write(*,*) "something went wrong with the domains!"
+					write(*,*) tmp, tetraData(tmp)%domain
+					write(*,*) ray%tetraID, tetraData(ray%tetraID)%domain
+					stop
+			    end if
+			end if
+				
+			! get point and direction
+			! also substract power emitted in case of emission from interface
+			tetra = tetraData(ray%tetraID)
+			call emPoint(ray, tetra, ems)
+				
+		end if
+		
+		Etotal = Etotal + ray%power  ! remember power emitted 
+		tetra%nrays = tetra%nrays + 1
         
-!         ! just for checking (could be commented)
-!         open(unit=83, file=fname, action='write', position='append')  
-!         write(83,'(7(1x,e14.6))') ray%point, ray%direction, ray%power
-!         close(unit=83)         
+        ! just for checking (could be commented)
+        open(unit=83, file=fname, action='write', position='append')  
+        write(83,'(7(1x,e14.6))') ray%point, ray%direction, ray%power
+        close(unit=83)         
         
     end subroutine CreateRay
     
@@ -217,16 +198,11 @@ module tracing
         type(rayContainer), intent(inout) :: ray
         character(len=*), intent(in)      :: leaveFname, rtfname
         logical, intent(in)               :: writeflag
-        real(dp)                          :: beta, omega, length, tmp
+        real(dp)                          :: length, tmp
         integer                           :: cface 
         type(tetraElement)                :: tetra
         
         ! calculate length of initial ray
-        ! kappa and sigma are defined by module rt_properties
-        ! only necessary in case of participating media
-        beta = kappa + sigma        
-        omega = sigma/beta
-        
         ! trace ray until the energy is below a treshold  
         tmp = ray%power  ! initial ray power
         length = GetPathLength() ! path length (only meaningful for participating media)
@@ -252,6 +228,18 @@ module tracing
                 ray%length = 0.0_dp
 				length = GetPathLength()
 				
+		    elseif ((RT_setup .eq. 'led') .and. (tetra%domain /= tetraData(tetra%neighbors(ray%faceID,1))%domain)) then		
+				
+				! ray is reflected into emitting surface
+				! complete absorption
+				call RayAbsorbing(ray, tetra, 1.0_dp)
+				! write point on path
+			    if (writeflag) call WriteRayData(ray, rtfname)
+			    
+			    ! reset ray%length and get new mean free path length
+				ray%length = 0.0_dp
+				length = GetPathLength()
+			    
             elseif ((RT_setup .eq. 'led') .and. (ray%length >= length) ) then 
 			    
 			    ! setup specific for 'led'    
@@ -266,7 +254,7 @@ module tracing
 			    ! of these 0.05 will be completely absorbed and 0.95 will be remmitted
 			    ! yellow light will be reflected completely (no self-absorbtion)
 			    ! TODO: define constants as input parameters
-			    if ((ray%colorchange .eqv. .false.) .and. (myRandom(0) .gt. 0.05_dp)) call RayAbsorbing(ray, tetra, 0.05_dp)
+			    if ((ray%colorchange .eqv. .false.) .and. (myRandom(0) .le. qe)) call RayAbsorbing(ray, tetra, absorptionPercentage)
 			    call RayScatter(ray, tetra, leaveFname)
 						
 				! write point on path
@@ -279,8 +267,7 @@ module tracing
 			elseif ((RT_setup .eq. 'tomo') .and. (tetra%domain /= tetraData(tetra%neighbors(ray%faceID,1))%domain)) then  
 			
 				! setup specific for 'tomo'  
-				! check if domain will change
-				
+				! check if domain will change (indicates reflection or absorption at interface) 		
 			    call DomainChange(ray, tetra)
 	            if (writeflag) call WriteRayData(ray, rtfname)
 				
@@ -321,17 +308,8 @@ module tracing
             ! if emitted from, cycle if it is the same face
             if (f == faceOld) cycle  
             
+            ! get surface normal
             call return_surfNormal(tetra, f, nsf, p1)
-            
-!             ! 1 vertex and 2 vectors of current face
-!             call return_facevertIds(f,vertIDs)
-!             call return_coords(tetra, vertIDs, p1, p2, p3)
-!             p2 = p2 - p1 ! make a vector with origin at p1  
-!             p3 = p3 - p1 ! make a vector with origin at p1
-!             
-!             ! normal vector of current face  
-!             nsf = cross(p2,p3)
-!             nsf = nsf/norm(nsf) 
 
             ! calculate length until intersection
             length = (dot_product(nsf,p1) - dot_product(nsf,ray%point))/dot_product(nsf, ray%direction)
@@ -390,14 +368,13 @@ module tracing
 	    call Cartesian2Tetra(ray%point, tetra, t1, t2, t3)
 	    
 	    ! save absorption values
-	    absorbed(tetra%vertexIds(1)) = absorbed(tetra%vertexIds(1)) + t1*frac*ray%power
-        absorbed(tetra%vertexIds(2)) = absorbed(tetra%vertexIds(2)) + t2*frac*ray%power
-        absorbed(tetra%vertexIds(3)) = absorbed(tetra%vertexIds(3)) + t3*frac*ray%power
-        absorbed(tetra%vertexIds(4)) = absorbed(tetra%vertexIds(4)) + max((1-t1-t2-t3)-1e-13_dp,0.0_dp)*frac*ray%power
+	    powerNodal(tetra%vertexIds(1)) = powerNodal(tetra%vertexIds(1)) + t1*frac*ray%power
+        powerNodal(tetra%vertexIds(2)) = powerNodal(tetra%vertexIds(2)) + t2*frac*ray%power
+        powerNodal(tetra%vertexIds(3)) = powerNodal(tetra%vertexIds(3)) + t3*frac*ray%power
+        powerNodal(tetra%vertexIds(4)) = powerNodal(tetra%vertexIds(4)) + max((1-t1-t2-t3)-1e-13_dp,0.0_dp)*frac*ray%power
         
         ! update raypower
         ray%power = (1.0_dp-frac)*ray%power
-!         write(*,'(2(e14.6,1x),4(i8,1x))') ray%power, frac, tetra%vertexIds(1), tetra%vertexIds(2),tetra%vertexIds(3),tetra%vertexIds(4)
         
         ! change to yellow light
         if (RT_setup .eq. 'led') then
@@ -469,6 +446,8 @@ module tracing
 		    stop
 		end if
 		
+! 		if (any(-tetra%neighbors(ray%faceID,2) == emSurf%originalID)) write(*,*) 'should leave' 
+		
 		if (RT_setup .eq. 'tomo') then
 			if (count(-tetra%neighbors(ray%faceID,2) == emSurf%originalID) == 0) then
 				! one of the bounding box boundaries
@@ -477,9 +456,9 @@ module tracing
 				ray%direction = ray%direction + 2*cosAngle*nsf
 		    else
 			    ! one of the boundary emission surfaces
-			    ! here complete absortption occurs (but should not go into absorped array)
+			    ! here complete absortption occurs (but should not go into absorbed array)
 				! call RayAbsorbing(ray, tetra, 1.0_dp)
-				Eleft = Eleft + ray%power
+				Eleft = Eleft - ray%power
 				ray%power = 0.0_dp
 		    end if
 		elseif (RT_setup .eq. 'led') then
@@ -487,12 +466,6 @@ module tracing
 			! refraction indices (should come from outside)
 			! refraction indices are defined by module rt_properties			
 			ratio = refracIndices(tetra%domain)/refracIndices(2)
-			
-! 			if (tetra%neighbors(ray%faceID,2) < 0)  then
-! 				
-! 		    else
-! 			    ratio = refracIndices(tetra%domain+1)/refracIndices(tetraData(tetra%neighbors(ray%faceID,1))%domain + 1)
-! 			end if
 	    
 		    ! get incident angle
 		    call IncidentAngle(tetra, ray, cosAngle, nsf)
@@ -549,32 +522,40 @@ module tracing
 		real(dp)                          :: cosAngle, theta, psi
 		integer, dimension(3)             :: vertIDs
 		
-! 		! specular case	
-! 		! get incident angle
-! 		call IncidentAngle(tetra, ray, cosAngle, nsf)
-!         
-!         ! compare with random if reflection or absorption occurs
-!         if (myRandom(0) <= 1.0_dp - 1.5_dp*alpha*cosAngle) then
-! 	        ! ray is reflected
-! 	        ray%direction = ray%direction + 2*cosAngle*nsf  
-! 	    else
-! 		    ! ray is absorbed
-! 		    ! TODO: case of partial absorption
-! 		    call RayAbsorbing(ray, tetra, 1.0_dp)
-! 		end if
+		if (reflection .eq. 'specular') then
 		
-		! diffuse case
-	    if (myRandom(0) <= 1.0_dp - alpha) then
-		    ! diffuse reflection
-		    call return_surfNormal(tetra, ray%faceID, nsf, p1)
-		    dir1 = (ray%point-p1)/norm(ray%point-p1) ! a vector in the face
-            theta = asin(sqrt(myRandom(0)))
-            psi = 2.0_dp*pi*myRandom(0) 	         
-            ray%direction = sin(theta)*(cos(psi)*dir1 + sin(psi)*cross(nsf, dir1)) + cos(theta)*nsf
+			! specular case	
+			! get incident angle
+			call IncidentAngle(tetra, ray, cosAngle, nsf)
+        
+	        ! compare with random if reflection or absorption occurs
+	        if (myRandom(0) <= 1.0_dp - 1.5_dp*alpha*cosAngle) then
+		        ! ray is reflected
+		        ray%direction = ray%direction + 2*cosAngle*nsf  
+		    else
+			    ! ray is absorbed
+			    ! TODO: case of partial absorption
+			    call RayAbsorbing(ray, tetra, 1.0_dp)
+			end if
+		
+		elseif (reflection .eq. 'diffuse') then
+		
+			! diffuse case
+		    if (myRandom(0) <= 1.0_dp - alpha) then
+			    ! diffuse reflection
+			    call return_surfNormal(tetra, ray%faceID, nsf, p1)
+			    dir1 = (ray%point-p1)/norm(ray%point-p1) ! a vector in the face
+	            theta = asin(sqrt(myRandom(0)))
+	            psi = 2.0_dp*pi*myRandom(0) 	         
+	            ray%direction = sin(theta)*(cos(psi)*dir1 + sin(psi)*cross(nsf, dir1)) + cos(theta)*nsf
+			else
+			    ! absorption
+			    ! TODO: case of partial absorption
+			    call RayAbsorbing(ray, tetra, 1.0_dp)
+			end if
 		else
-		    ! absorption
-		    ! TODO: case of partial absorption
-		    call RayAbsorbing(ray, tetra, 1.0_dp)
+			write(*,*) "UNKNOWN TYPE OF REFLECTION!"
+			stop
 		end if
 		
 	end subroutine DomainChange
@@ -639,20 +620,105 @@ module tracing
 	
 	end subroutine RayWavelength
 	
+	
 	! calculating some runstatistics
 	subroutine runStats(stats)
 		type(runstatistic), intent(out) :: stats
+		real(dp), dimension(:), allocatable, save :: oldValue
 		
-		stats%entries = count(absorbed.gt.0)
-		stats%maxvalue = maxval(absorbed)
-		stats%mean = sum(absorbed, absorbed.gt.0)/stats%entries
-		stats%logmean = sum(log10(absorbed), absorbed.gt.0)/stats%entries
-		stats%rms = sqrt(sum(absorbed**2,absorbed.gt.0)/stats%entries)
-		stats%var = sum((absorbed - stats%mean)**2, absorbed.gt.0)/(stats%entries-1)
-		stats%logvar =  sum((log10(absorbed) - stats%logmean)**2, absorbed.gt.0)/(stats%entries-1)
-		stats%logmeannormal = sum(log10(absorbed)/log10(stats%maxvalue), absorbed.gt.0)/stats%entries
-		stats%logvarnormal =  sum((log10(absorbed)/log10(stats%maxvalue) - stats%logmeannormal)**2, absorbed.gt.0)/(stats%entries-1)
+		if (allocated(oldValue) .eqv. .false.) allocate(oldValue(size(powerNodal)))
+		
+		stats%entries = count(abs(powerNodal).gt.1e-13_dp)
+		stats%maxvalue = maxval(powerNodal)
+		stats%mean = sum(powerNodal, powerNodal.gt.0)/stats%entries
+		stats%logmean = sum(log10(powerNodal), powerNodal.gt.0)/stats%entries
+		stats%rms = sqrt(sum(powerNodal**2,powerNodal.gt.0)/stats%entries)
+		stats%var = sum((powerNodal - stats%mean)**2, powerNodal.gt.0)/(stats%entries-1)
+		stats%logvar =  sum((log10(powerNodal) - stats%logmean)**2, powerNodal.gt.0)/(stats%entries-1)
+		stats%logmeannormal = sum(log10(powerNodal)/log10(stats%maxvalue), powerNodal.gt.0)/stats%entries
+		stats%logvarnormal =  sum((log10(powerNodal)/log10(stats%maxvalue) - stats%logmeannormal)**2, powerNodal.gt.0)/(stats%entries-1)
+		stats%dist = sqrt(sum((powerNodal/stats%maxvalue-oldValue/maxval(oldValue))**2)/stats%entries)   
+		oldValue = powerNodal
 		
 	end subroutine runStats	
+	
+	
+	! choose emission face based on random selection
+	subroutine emFace(ems,ray)
+	
+		type(emissionSurface), intent(in) :: ems
+		type(rayContainer), intent(out)   :: ray
+		real(dp)                          :: psi
+		integer                           :: i
+		
+		! choose tetra based on random value
+		! decision whether to start at the beginning or end of the list (just for speed)
+	    psi = myRandom(0)
+	    if (psi > 0.5) then
+	        do i = size(ems%value)-1,1,-1
+	            if (ems%value(i) < psi) exit
+	        end do
+	        ray%tetraID = ems%elemData(i+1,1)
+	        ray%faceID = ems%elemData(i+1,2)
+	    else           
+	        do i = 1,size(ems%value)
+	            if (ems%value(i) > psi) exit
+	        end do
+	        ray%tetraID = ems%elemData(i,1)
+	        ray%faceID = ems%elemData(i,2)
+	    end if
+        
+	end subroutine emFace
+	
+	
+	! get point within face and choose direction
+	subroutine emPoint(ray,tetra, ems)
+	
+		type(rayContainer), intent(inout) :: ray
+		type(tetraElement), intent(in)    :: tetra
+		integer, dimension(3)             :: vertIDs 
+	    real(dp), dimension(3)            :: p1, p2, p3, dir1, ndir 
+	    real(dp)                          :: tc1, tc2, psi, theta
+	    type(emissionSurface)             :: ems
+	    
+		! get vertices for the selected face on the surface
+        call return_facevertIds(ray%faceID,vertIDs)  
+        call return_coords(tetra, vertIDs, p1, p2, p3)
+        
+        ! get random value for two tetra-coordinates
+        tc1 = 1.0_dp - sqrt(1-myRandom(0))
+        tc2 = (1.0_dp-tc1)*myRandom(0)
+        
+        ! get points from triangle coordinates
+        ray%point = tc1*p1 + tc2*p2 + (1.0_dp - tc1 - tc2)*p3 
+        
+        ! test whether point is indeed in triangle
+        if (PointInside(p1,p2,p3,ray%point) .eqv. .false.) then
+            write(*,*) "Emission Point not in chosen face!"
+            stop
+        end if
+    
+        ! choose ray direction
+        ndir = cross(p2-p1, p3-p1)
+        ndir = ndir/norm(ndir)
+        
+        ! check whether normal vector points inwards or outwards
+        if (dot_product(ndir, vertices(tetra%vertexIds(10-sum(vertIDs)),:) - ray%point) < 0) ndir = -ndir
+
+        ! rotate normal vector into direction defined by psi and theta
+        dir1 = (p2-p1)/norm(p2-p1)
+        theta = asin(sqrt(myRandom(0)))
+        psi = 2.0_dp*pi*myRandom(0) 	         
+        ray%direction = sin(theta)*(cos(psi)*dir1 + sin(psi)*cross(ndir, dir1)) + cos(theta)*ndir
+        
+        ! substract in case of tomo data and emission from interface
+        if ((any(ems%name == ignoredSurfaces) .eqv. .true.) .and. (RT_setup .eq. 'tomo')) then
+	        powerNodal(tetra%vertexIds(1)) = -ray%power*tc1
+	        powerNodal(tetra%vertexIds(2)) = -ray%power*tc2
+	        powerNodal(tetra%vertexIds(3)) = -ray%power*(1.0_dp-tc1-tc2)
+	        Etotal = Etotal - ray%power 
+	    end if
+	    
+	end subroutine emPoint
 	
 end module tracing

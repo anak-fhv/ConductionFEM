@@ -15,7 +15,7 @@ module pre_process
     subroutine start_preprocessing
     
 		logical :: l
-		integer :: alloc_status, io_error, i, n
+		integer :: alloc_status, io_error, i, n, tmp
                 
         ! check if file provided by user exists
         ! first check for *.data file (since it is faster)
@@ -39,24 +39,34 @@ module pre_process
         end if    
         
         ! read additional data files
-        if (RT_setup .eq. 'tomo') then
-            write(*,*)
-            write(*,*) "reading additional data files ..."
-            write(*,*)
-			allocate(temperature(size(vertices,1)), stat=alloc_status)
-		    call check_alloc_error(alloc_status, "temperature array")
+        write(*,*)
+        write(*,*) "reading additional data files ..."
+        write(*,*)
+        if (RT_setup .eq. 'tomo') then    
             
-		    open(unit=88, file=dataFolder//"RPC_2d_simple_temp_grad.data", status = 'old', action='read',iostat = io_error)
-		    call check_io_error(io_error,"reading temperature tomo",88)
-		    do i =1,size(vertices,1)
-			    read(88,'(e14.6)') temperature(i)
+            open(unit=88, file=dataFolder//input, status='old', action='read')
+            read(88,'(i10)') n
+            
+            allocate(source(n,3), stat = alloc_status)
+            call check_io_error(io_error,"reading input tomo",88)
+            
+            do i =1,size(source,1)
+			    read(88,'(F8.0,1x,F2.0,1x,F13.8)') source(i,1), source(i,2), source(i,3)
+! 			    write(*,*) source(i,1), source(i,2), source(i,3)
             end do
             close(unit=88)
-        elseif (RT_setup .eq. 'led') then
-	        write(*,*)
-            write(*,*) "reading additional data files ..."
+            
+            do i = 1,size(emSurf)
+                tmp = size(emSurf(i)%elemData,1)
+	            allocate(emSurf(i)%value(tmp), stat=alloc_status)
+	            call check_alloc_error(alloc_status, "ems%value array tomo")
+                call CreateEmissionSurfTOMO(emSurf(i))
+                write(*,*) emSurf(i)%name, emSurf(i)%originalID, emSurf(i)%power 
+            end do
             write(*,*)
             
+        elseif (RT_setup .eq. 'led') then
+	        
             ! blue spectrum
             open(unit=88, file=dataFolder//"LED_spektrum_blue.data", status = 'old', action='read',iostat = io_error)
             call check_io_error(io_error,"reading led blue",88)
@@ -66,7 +76,7 @@ module pre_process
 			allocate(spectrumB(n,2), stat=alloc_status)
 		    call check_alloc_error(alloc_status, "spectrum data")
             
-		    do i =1,n
+		    do i=1,n
 			    read(88,'(e14.6, 1x, e14.6)') spectrumB(i,:)
             end do
             close(unit=88)
@@ -80,11 +90,16 @@ module pre_process
 			allocate(spectrumY(n,2), stat=alloc_status)
 		    call check_alloc_error(alloc_status, "yellow spectrum data")
             
-		    do i =1,n
+		    do i=1,n
 			    read(88,'(e14.6, 1x, e14.6)') spectrumY(i,:)
             end do
-            close(unit=88)
+            close(unit=88)  
             
+            ! populate emission surface data
+            tmp = size(emSurf(1)%elemData,1)
+	        allocate(emSurf(1)%value(tmp), stat=alloc_status)
+	        call check_alloc_error(alloc_status, "ems%value array led")
+		    call CreateEmissionSurfLED(emSurf(1))
             
 		end if
 		 
@@ -96,7 +111,7 @@ module pre_process
     subroutine read_mesh_data(file_name)
 
         character(len=*), intent(in)         :: file_name 
-        integer                              :: io_error, read_error, alloc_status, i, j, k, n
+        integer                              :: io_error, read_error, alloc_status, i, j, k, n, h
         integer                              :: nVertices, nTetra, nHexa, nPyr, nWedges, nDomain, nSurface
         integer, dimension(:,:), allocatable :: surfData
         integer, dimension(:), allocatable   :: elemDomain
@@ -183,7 +198,6 @@ module pre_process
         allocate(emSurf(size(emSurfNames)), stat=alloc_status)
         call check_alloc_error(alloc_status, "ems array")
         k = 1
-
         do i = 1,nSurface
     
             ! read number of elements within surface and name of aurface
@@ -204,7 +218,8 @@ module pre_process
        
             ! assign data to tetraElement-type
             ! if a face is on the surface, the tetraeder elements reference itself and the
-            ! neighboring face is a negitve numver with the index of the surface
+            ! neighboring face is a negative number with the index of the surface
+            ! the interface within a domain is ignored
             if (count(surfName == ignoredSurfaces) == 0) then
 	            do n = 1, nElem
 	                tetraData(surfData(n,1))%neighbors(surfData(n,2),1) = surfData(n,1)
@@ -219,18 +234,13 @@ module pre_process
                 emSurf(k)%originalID = i
                 
                 ! allocate data
-                allocate(emSurf(k)%area(nElem), stat=alloc_status)
-                call check_alloc_error(alloc_status, "ems(k)%area array")
                 allocate(emSurf(k)%elemData(nElem,2), stat=alloc_status)
                 call check_alloc_error(alloc_status, "ems(k)%elemData array")
                 
                 ! create emission surface
                 emSurf(k)%name = surfName
-                call CreateEmissionSurf(surfData, emSurf(k))
-                
-                ! some output
-                write(*,'(1x,a20,1x,e14.6)') surfName, emSurf(k)%totalarea
-                
+                emSurf(k)%elemData = surfData
+                                    
                 ! increase counter
                 k = k + 1
                 
@@ -434,20 +444,12 @@ module pre_process
         n = size(list) ! size of list        
         ! loop over elements in list and identify neighbors
         do i = 1,n-1
-                    
-!             if (list(i) == 36348) write(*,*) 36348        
-!             if (list(i) == 36220) write(*,*) 36220
                                                  
             ! if element has already 4 neighbors
             if (list(i) == 0) cycle
             
-!             if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) tetraData(list(i))%vertexIDs
-!             if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) tetraData(list(i))%neighbors(:,1)
-!             if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) tetraData(list(i))%neighbors(:,2)
-            
             ! count how many neighbors element i already has
             counter = count(tetraData(list(i))%neighbors(:,1) > 0)
-!             if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) counter
                                    
             ! search all elements below
             do j= i+1,n
@@ -461,22 +463,15 @@ module pre_process
                              
                 ! 3 vertices are equal, elements are neighbors
                 if (count(mask) == 3) then
-                
-! 	                if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) list(j)
                     
                     counter = counter + 1   ! increase number of neighbors in element i
                     face_i = return_facenumber(mask) ! get face of element i which is shared by both elements
                     call add_neighbor(list(i), list(j), face_i)
                     
-!                     if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) counter
-!                     if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) face_i
-                    
                     ! if element j has four neighbors, add zero into list
                     if (minval(tetraData(list(j))%neighbors(:,1)) > 0) then
                         list(j) = 0
                     end if
-                    
-!                     if ((list(i) == 36348) .or. (list(i) == 36220)) write(*,*) list(j)
                     
                 end if
                 
@@ -537,36 +532,88 @@ module pre_process
     ! create emission surface from surface data which includes
     ! calculating the area of each face and storing it in a
     ! cumulative manner   
-    subroutine CreateEmissionSurf(surfData, ems)
+    subroutine CreateEmissionSurfLED(ems)
 
-        integer, intent(in)                  :: surfData(:,:)
         type(emissionSurface), intent(inout) :: ems        
-        integer                              :: n,i
+        integer                              :: i, alloc_status
         integer, dimension(3)                :: vertIds
         real(dp), dimension(3)               :: p1, p2, p3 
         
-        do i =1,size(surfData,1)
-            
-                ! index of tetraeder and the index for the face on the surface 
-                ems%elemData(i,1) = surfData(i,1)
-                ems%elemData(i,2) = surfData(i,2)
+        ! it's a single emission surface with constant temperature
+	    do i =1,size(ems%value)
                 
-                ! determine vertices for calculating the face area
-                call return_facevertIds(surfData(i,2),vertIds)   
-                call return_coords(tetraData(surfData(i,1)), vertIds, p1, p2, p3)                        
+           ! determine vertices for calculating the face area
+           call return_facevertIds(ems%elemData(i,2),vertIds)   
+           call return_coords(tetraData(ems%elemData(i,1)), vertIds, p1, p2, p3)                        
+           if (i == 1) then
+                ems%value(1) = 0.5_dp*norm(cross(p2-p1,p3-p1))
+           else 
+                ems%value(i) = 0.5_dp*norm(cross(p2-p1,p3-p1)) + ems%value(i-1)
+           end if 
+                
+	    end do
+        
+	    ! normalize value
+	    ems%totalvalue = ems%value(size(ems%value))
+	    ems%value = ems%value/ems%totalvalue
+	    ems%power = Eemitted
+        
+    end subroutine CreateEmissionSurfLED
+    
+    subroutine CreateEmissionSurfTOMO(ems)
+
+        type(emissionSurface), intent(inout) :: ems        
+        integer                              :: i, alloc_status
+        integer, dimension(3)                :: vertIds
+        real(dp), dimension(3)               :: p1, p2, p3 
+        real(dp)                             :: temp 
+        
+        ! check kind of emission surface
+        if (any(ems%name == ignoredSurfaces) .eqv. .false.) then
+	        
+	        ! get temperature at the wall
+	        if (ems%name .eq. 'zLow_Domain2') then
+		        temp = tbounds(1)
+		    else
+			    temp = tbounds(2)
+	        end if  
+	        
+		    ! it is one of the wall boundaries
+	        do i = 1,size(ems%value)    
+			    ! determine vertices for calculating the face area
+		        call return_facevertIds(ems%elemData(i,2),vertIds)   
+	            call return_coords(tetraData(ems%elemData(i,1)), vertIds, p1, p2, p3)                        
+	            if (i == 1) then
+		            ems%value(1) = 0.5_dp*norm(cross(p2-p1,p3-p1))*sbk*temp**4
+	            else 
+	                ems%value(i) = 0.5_dp*norm(cross(p2-p1,p3-p1))*sbk*temp**4 + ems%value(i-1)
+	            end if
+		    end do
+		    
+        else
+	        
+	        ! it is the interface surface
+            do i = 1,size(ems%value)
                 if (i == 1) then
-                    ems%area(1) = 0.5_dp*norm(cross(p2-p1,p3-p1))
-                else 
-                    ems%area(i) = 0.5_dp*norm(cross(p2-p1,p3-p1)) + ems%area(i-1)
-                end if 
-                
-        end do
+		            ems%value(1) = alpha*source(i,3)
+		        else
+			        ems%value(i) = alpha*source(i,3) + ems%value(i-1)
+			    end if
+			    
+			    ! check if anything is good
+			    if ((ems%elemData(i,1) .ne. source(i,1)) .or. (ems%elemData(i,2) .ne. source(i,2))) then
+				    write(*,*) source(i,:)
+				    write(*,*) ems%elemData(i,:)
+				    stop
+				end if   
+			end do
+        end if
         
-        ! normalize area
-        ems%totalarea = ems%area(size(surfData,1))
-        ems%area = ems%area/ems%totalarea
+	    ! normalize area
+	    ems%power = ems%value(size(ems%value))
+	    ems%value = ems%value/ems%power
         
-    end subroutine CreateEmissionSurf
+    end subroutine CreateEmissionSurfTOMO
     
     
     ! write out data from pre-processing
@@ -604,15 +651,16 @@ module pre_process
         
         ! write emission surface information
         do n = 1, size(emSurf)
-            write(82,'(1x,i8,1x,a)',iostat=write_error) size(emSurf(n)%area), trim(emSurf(n)%name)
+            write(82,'(1x,i8,1x,a)',iostat=write_error) size(emSurf(n)%elemData,1), trim(emSurf(n)%name)
             call check_io_error(write_error,"writing emission surface info",82)
             
-            do k=1,size(emSurf(n)%area)
-                write(82,'(1x,i8,1x,i2,2x,e14.6)',iostat=write_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
+            do k=1,size(emSurf(n)%elemData,1)
+!                 write(82,'(1x,i8,1x,i2,2x,e14.6)',iostat=write_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
+                write(82,'(1x,i8,1x,i2)',iostat=write_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2)
                 call check_io_error(write_error,"writing emission surface data",82)
             end do
-            write(82,'(e14.6)') emSurf(n)%totalarea
-            write(82,'(e14.6)') emSurf(n)%originalID
+!             write(82,'(e14.6)') emSurf(n)%totalarea
+            write(82,'(i4)') emSurf(n)%originalID
         end do    
         
         ! close file
@@ -659,19 +707,20 @@ module pre_process
         call check_alloc_error(alloc_status, "emSurf array")
         do n = 1, nSurf
             read(83,'(1x,i8,1x,a)',iostat=read_error) nElem, emSurf(n)%name
-            call check_io_error(read_error,"writing emission surface info",83)
+            call check_io_error(read_error,"reading emission surface info",83)
             
-            allocate(emSurf(n)%area(nElem), stat=alloc_status)
-            call check_alloc_error(alloc_status, "emSurf%area array")
+!             allocate(emSurf(n)%area(nElem), stat=alloc_status)
+!             call check_alloc_error(alloc_status, "emSurf%area array")
             allocate(emSurf(n)%elemData(nElem,2), stat=alloc_status)
             call check_alloc_error(alloc_status, "emSurf%elemData array")
             
             do k=1,nElem
-                read(83,'(1x,i8,1x,i2,2x,e14.6)',iostat=read_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
-                call check_io_error(read_error,"writing emission surface data",83)
+!                 read(83,'(1x,i8,1x,i2,2x,e14.6)',iostat=read_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2), emSurf(n)%area(k)
+                read(83,'(1x,i8,1x,i2)',iostat=read_error) emSurf(n)%elemData(k,1), emSurf(n)%elemData(k,2)
+                call check_io_error(read_error,"reading emission surface data",83)
             end do
-            read(83,'(e14.6)') emSurf(n)%totalarea
-            read(83,'(e14.6)') emSurf(n)%originalID
+!             read(83,'(e14.6)') emSurf(n)%totalarea
+            read(83,'(i4)') emSurf(n)%originalID
         end do    
         
         ! close file
