@@ -51,7 +51,7 @@ module tracing
         write(*,*) "Start Raytracing"
         write(*,*) "================"
         write(*,*)
-        write(*,'(a10,1x,a10,1x,a14,1x,a14,1x,a14,1x,a14)') "iter", "nonzeros", "max", "mean", "rms", "var"          
+        write(*,'(a10,1x,a10,1x,a14,1x,a14,1x,a14,1x,a14)') "iter", "nonzeros", "max", "rms"          
         call cpu_time(t1)
         pot = 0.0
 	    do k = 1,nrays
@@ -78,7 +78,7 @@ module tracing
 	        ! catch some statistics
 	        if (k .eq. nint(10**(pot))) then
 	            call runStats(stats)
-		        write(*,'(i10,1x,i10,1x,e14.6,1x,e14.6,1x,e14.6,1x,e14.6)') k, stats%entries, stats%maxvalue, stats%logmeannormal, stats%dist, stats%logvarnormal 
+		        write(*,'(i10,1x,i10,1x,e14.6,1x,e14.6)') k, stats%entries, stats%maxvalue, stats%dist
 		        if (k .le. 10) pot = pot + 0.2
 		        if (k .gt. 10) pot = pot + 0.1
 		    end if    
@@ -128,7 +128,7 @@ module tracing
 			! ray power
 	        ray%power = ems%power/nrays
 			
-			! wavelength through linear interpolation
+			! wavelength through linear interpolationsize(emSurf(id)%rays)
 	        theta = myRandom(0)
             id = minloc(abs(spectrumB(:,2) - theta))
             if (abs(spectrumB(id(1),2) - theta) .le. 1e-13_dp) then
@@ -143,23 +143,27 @@ module tracing
 			
 			! emission surface selection is power ratio based 
 			if (k .le. floor(emSurf(1)%power*nrays/sum(emSurf%power))) then
-				ems = emSurf(1)
+! 				ems = emSurf(1)
+				id(1) = 1
 				if ((k==1) .or. (k==floor(emSurf(1)%power*nrays/sum(emSurf%power)))) write(*,*) k, 1, k*sum(emSurf%power)/nrays
 		    elseif (k .le. floor(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power))) then 
-		        ems = emSurf(2)
+! 		        ems = emSurf(2)
+                id(1) = 2
 		        if ((k==ceiling(emSurf(1)%power*nrays/sum(emSurf%power))) .or. (k==floor(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power)))) write(*,*) k, 2, k*sum(emSurf%power)/nrays
 			else
-			    ems = emSurf(3)
-			    if ((k==ceiling(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power))) .or. (k==nrays)) write(*,*) k, 1, k*sum(emSurf%power)/nrays
+! 			    ems = emSurf(3)
+			    id(1) = 3
+			    if ((k==ceiling(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power))) .or. (k==nrays)) write(*,*) k, 3, k*sum(emSurf%power)/nrays
 			end if
 			
 			! choose tetra and corresponding face based on random value 
 			! (roulette wheel selection)
-			call emFace(ems, ray)
+			call emFace(emSurf(id(1)), ray)
 			
 			! ray power
 			ray%power = sum(emSurf%power)/nrays
 			
+			ems = emSurf(id(1))
 			! move to other domain in case of emission from interface
 			if (any(ems%name == ignoredSurfaces) .eqv. .true.) then
 				tmp = ray%tetraID
@@ -182,7 +186,6 @@ module tracing
 		end if
 		
 		Etotal = Etotal + ray%power  ! remember power emitted 
-		tetra%nrays = tetra%nrays + 1
         
         ! just for checking (could be commented)
         open(unit=83, file=fname, action='write', position='append')  
@@ -363,6 +366,7 @@ module tracing
 	    type(tetraElement), intent(in)    :: tetra
 	    real(dp), intent(in)              :: frac
 	    real(dp)                          :: t1, t2, t3, theta
+	    integer                           :: i
 	    
 	    ! do some shape function magic
 	    call Cartesian2Tetra(ray%point, tetra, t1, t2, t3)
@@ -381,6 +385,11 @@ module tracing
 	        ray%colorchange = .true.
 	        call RayWavelength(ray,spectrumY)
         end if
+        
+        ! get emission surface and face for counting
+        ! THIS A VERY SPECFIC HACK!!!
+        where ((emSurf(3)%elemData(:,1) == tetraData(ray%tetraID)%neighbors(ray%faceID,1)) .and. (emSurf(3)%elemData(:,2) == tetraData(ray%tetraID)%neighbors(ray%faceID,2))) emSurf(3)%rays(:,2) = emSurf(3)%rays(:,2) + 1
+		    
         
     end subroutine RayAbsorbing
     
@@ -630,13 +639,13 @@ module tracing
 		
 		stats%entries = count(abs(powerNodal).gt.1e-13_dp)
 		stats%maxvalue = maxval(powerNodal)
-		stats%mean = sum(powerNodal, powerNodal.gt.0)/stats%entries
-		stats%logmean = sum(log10(powerNodal), powerNodal.gt.0)/stats%entries
-		stats%rms = sqrt(sum(powerNodal**2,powerNodal.gt.0)/stats%entries)
-		stats%var = sum((powerNodal - stats%mean)**2, powerNodal.gt.0)/(stats%entries-1)
-		stats%logvar =  sum((log10(powerNodal) - stats%logmean)**2, powerNodal.gt.0)/(stats%entries-1)
-		stats%logmeannormal = sum(log10(powerNodal)/log10(stats%maxvalue), powerNodal.gt.0)/stats%entries
-		stats%logvarnormal =  sum((log10(powerNodal)/log10(stats%maxvalue) - stats%logmeannormal)**2, powerNodal.gt.0)/(stats%entries-1)
+		stats%mean = sum(powerNodal, abs(powerNodal).gt.0)/stats%entries
+		stats%logmean = sum(log10(abs(powerNodal)), powerNodal.gt.0)/stats%entries
+		stats%rms = sqrt(sum(powerNodal**2,abs(powerNodal).gt.0)/stats%entries)
+		stats%var = sum((powerNodal - stats%mean)**2, abs(powerNodal).gt.0)/(stats%entries-1)
+		stats%logvar =  sum((log10(abs(powerNodal)) - stats%logmean)**2, abs(powerNodal).gt.0)/(stats%entries-1)
+		stats%logmeannormal = sum(log10(abs(powerNodal))/log10(stats%maxvalue), abs(powerNodal).gt.0)/stats%entries
+		stats%logvarnormal =  sum((log10(abs(powerNodal))/log10(stats%maxvalue) - stats%logmeannormal)**2, abs(powerNodal).gt.0)/(stats%entries-1)
 		stats%dist = sqrt(sum((powerNodal/stats%maxvalue-oldValue/maxval(oldValue))**2)/stats%entries)   
 		oldValue = powerNodal
 		
@@ -646,7 +655,7 @@ module tracing
 	! choose emission face based on random selection
 	subroutine emFace(ems,ray)
 	
-		type(emissionSurface), intent(in) :: ems
+		type(emissionSurface), intent(inout) :: ems
 		type(rayContainer), intent(out)   :: ray
 		real(dp)                          :: psi
 		integer                           :: i
@@ -668,6 +677,8 @@ module tracing
 	        ray%faceID = ems%elemData(i,2)
 	    end if
         
+        ems%rays(i,1) = ems%rays(i,1) + 1 ! counter for rays emitted
+         
 	end subroutine emFace
 	
 	
@@ -713,9 +724,9 @@ module tracing
         
         ! substract in case of tomo data and emission from interface
         if ((any(ems%name == ignoredSurfaces) .eqv. .true.) .and. (RT_setup .eq. 'tomo')) then
-	        powerNodal(tetra%vertexIds(1)) = -ray%power*tc1
-	        powerNodal(tetra%vertexIds(2)) = -ray%power*tc2
-	        powerNodal(tetra%vertexIds(3)) = -ray%power*(1.0_dp-tc1-tc2)
+	        powerNodal(tetra%vertexIds(1)) = -ray%power*tc1 + powerNodal(tetra%vertexIds(1))
+	        powerNodal(tetra%vertexIds(2)) = -ray%power*tc2 + powerNodal(tetra%vertexIds(2))
+	        powerNodal(tetra%vertexIds(3)) = -ray%power*(1.0_dp-tc1-tc2) + powerNodal(tetra%vertexIds(3))
 	        Etotal = Etotal - ray%power 
 	    end if
 	    

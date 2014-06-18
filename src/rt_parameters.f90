@@ -20,7 +20,7 @@ module rt_parameters
         
         integer                 :: domain = 0    ! to which domain the tetra belongs
 !         real(dp)                :: powerAvail = 0.0  ! power to be emitted from the tetra (used for tomo-setup)
-        integer                 :: nrays = 0     ! number of rays emitted
+!         integer                 :: nrays = 0     ! number of rays emitted
 !         integer                 :: erays = 0     ! number of rays emitted so far
 !         real(dp)                :: ppray = 0.0   ! power per ray
     end type tetraElement
@@ -33,7 +33,7 @@ module rt_parameters
                                                          ! (:,2) face of tetra-element which is on the surface
         integer                              :: originalID ! id used for tetraeder connections             
         real(dp)                             :: power  ! total power to be emitted from the surface       
-        integer                              :: nrays  ! number of rays to be emitted from surface
+        integer, dimension(:,:), allocatable :: rays   ! number of rays emitted from (:,1)and absorbed by (:,2) the face
     end type
     
     type :: rayContainer  ! contains information on the traced ray

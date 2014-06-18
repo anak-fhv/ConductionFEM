@@ -16,7 +16,7 @@ module pre_process
     
 		logical :: l
 		integer :: alloc_status, io_error, i, n, tmp
-                
+        integer :: id        
         ! check if file provided by user exists
         ! first check for *.data file (since it is faster)
         inquire(file=dataFolder//trim(data_fname)//".data", exist=l)
@@ -51,19 +51,29 @@ module pre_process
             call check_io_error(io_error,"reading input tomo",88)
             
             do i =1,size(source,1)
-			    read(88,'(F8.0,1x,F2.0,1x,F13.8)') source(i,1), source(i,2), source(i,3)
+! 			    read(88,'(F8.0,1x,F2.0,1x,F13.8)') source(i,1), source(i,2), source(i,3)
+                read(88,*) source(i,:) 
 ! 			    write(*,*) source(i,1), source(i,2), source(i,3)
             end do
             close(unit=88)
+!             write(*,*) "read source" 
+
             
-            do i = 1,size(emSurf)
-                tmp = size(emSurf(i)%elemData,1)
-	            allocate(emSurf(i)%value(tmp), stat=alloc_status)
+            do i = 1,size(emSurfNames)
+                id = maxval((/1,2,3/),1,emSurfNames(i) == emSurf%name)
+!                 write(*,*) emSurf(id)%name
+                tmp = size(emSurf(id)%elemData,1)
+	            allocate(emSurf(id)%value(tmp), stat=alloc_status)
 	            call check_alloc_error(alloc_status, "ems%value array tomo")
-                call CreateEmissionSurfTOMO(emSurf(i))
-                write(*,*) emSurf(i)%name, emSurf(i)%originalID, emSurf(i)%power 
+	            allocate(emSurf(id)%rays(tmp,2), stat=alloc_status)
+	            call check_alloc_error(alloc_status, "ems%rays array tomo")
+	            emSurf(id)%rays=0
+                call CreateEmissionSurfTOMO(emSurf(id))
+                write(*,*) emSurf(id)%name, emSurf(id)%originalID, emSurf(id)%power, size(emSurf(id)%rays) 
             end do
             write(*,*)
+            
+!             stop
             
         elseif (RT_setup .eq. 'led') then
 	        
@@ -99,6 +109,9 @@ module pre_process
             tmp = size(emSurf(1)%elemData,1)
 	        allocate(emSurf(1)%value(tmp), stat=alloc_status)
 	        call check_alloc_error(alloc_status, "ems%value array led")
+	        allocate(emSurf(1)%rays(tmp,2), stat=alloc_status)
+	        call check_alloc_error(alloc_status, "ems%rays array led")
+		    emSurf(id)%rays=0
 		    call CreateEmissionSurfLED(emSurf(1))
             
 		end if
