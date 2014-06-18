@@ -21,7 +21,7 @@ program raytracing
     ! all user input is set in rt_properties and used as global variables
     
     ! intialize random generator
-    dummy = myRandom(2803) 
+!     dummy = myRandom(2803) 
     
     call start_preprocessing
 !     write(*,*) tetraData(36348)%vertexIDs
@@ -41,8 +41,20 @@ program raytracing
     write(*,*) "power emitted:", Etotal  
     write(*,*) "power absorbed:", sum(powerNodal)
     write(*,*) "power leaving:", Eleft
-    write(*,*) "difference:", Etotal + Eleft
+    write(*,*) "difference:", Etotal + Eleft - sum(powerNodal)
     write(*,*)
     write(*,*) "Eblue:", Eblue
     write(*,*) "Eyellow:", Eyellow
+    write(*,*) "max.absorbed", maxval(powerNodal)
+    write(*,*) "min.absorbed", minval(powerNodal)
+    write(*,*) "mean.absorbed", sum(powerNodal, abs(powerNodal).gt.0)/count(abs(powerNodal).gt.0)
+    
+    open(unit=102, file=resFolder//"ems.res", status='replace')   
+	write(102,'(i8,1x,i8)') (emSurf(3)%rays(i,:), i =1, size(emSurf(3)%rays,1))
+    close(unit=102)
+    
+!     do i=1,size(emSurf(3)%rays,1)
+! 	    write(*,*) i, emSurf(3)%rays(i,1)
+!     end do
+!     
 end program raytracing 
