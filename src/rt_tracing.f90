@@ -107,9 +107,7 @@ module tracing
         real(dp)                        :: theta, ratio, totalpower 
         type(tetraElement)              :: tetra
         type(emissionSurface)           :: ems
-        real(dp), dimension(3,3)        :: M
-        real(dp), dimension(3,4)        :: corners
-        
+        real(dp), dimension(:), allocatable, save :: values
         
         ! get emission surface and choose tetra on face
         if (RT_setup .eq. 'led') then
@@ -140,21 +138,45 @@ module tracing
 			end if
 			
 		elseif (RT_setup .eq. 'tomo') then
+		
+			! values for selecting a emission surface based on its emissive power
+			if (allocated(values) .eqv. .false.) then
+				allocate(values(size(emSurfNames)))
+				values(1) = floor(emSurf(1)%power*nrays/sum(emSurf%power))
+				do i = 2, size(emSurfNames)
+					values(i) = floor(sum(emSurf(1:i)%power)*nrays/sum(emSurf%power))
+				end do
+! 				write(*,*) values
+! 				write(*,*) ceiling(values)
+! 				write(*,*) floor(values)
+! 				write(*,*) floor(values) + 1
+			end if
 			
 			! emission surface selection is power ratio based 
-			if (k .le. floor(emSurf(1)%power*nrays/sum(emSurf%power))) then
-! 				ems = emSurf(1)
-				id(1) = 1
-				if ((k==1) .or. (k==floor(emSurf(1)%power*nrays/sum(emSurf%power)))) write(*,*) k, 1, k*sum(emSurf%power)/nrays
-		    elseif (k .le. floor(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power))) then 
-! 		        ems = emSurf(2)
-                id(1) = 2
-		        if ((k==ceiling(emSurf(1)%power*nrays/sum(emSurf%power))) .or. (k==floor(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power)))) write(*,*) k, 2, k*sum(emSurf%power)/nrays
-			else
-! 			    ems = emSurf(3)
-			    id(1) = 3
-			    if ((k==ceiling(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power))) .or. (k==nrays)) write(*,*) k, 3, k*sum(emSurf%power)/nrays
-			end if
+			id(1) = size(values)
+			do i = 1,size(values) - 1
+				if (k .le. values(i)) then
+					id(1) = i
+					exit
+		        end if
+		    end do    			
+			
+			! some status output
+			if ( (k == 1) .or. (k == nrays) .or. (any(k == floor(values))) .or.  (any(k == floor(values)+1)) ) write(*,*) k, id(1), k*sum(emSurf%power)/nrays 
+			
+! 			if (k .le. ) then
+! ! 				ems = emSurf(1)
+! 				id(1) = 1
+! 				if ((k==1) .or. (k==floor(emSurf(1)%power*nrays/sum(emSurf%power)))) write(*,*) k, 1, k*sum(emSurf%power)/nrays
+! 		    elseif (k .le. floor(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power))) then 
+! ! 		        ems = emSurf(2)
+!                 id(1) = 2
+! 		        if ((k==ceiling(emSurf(1)%power*nrays/sum(emSurf%power))) .or. (k==floor(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power)))) write(*,*) k, 2, k*sum(emSurf%power)/nrays
+! 			else
+! ! 			    ems = emSurf(3)
+! 			    id(1) = 3
+! 			    if ((k==ceiling(sum(emSurf(1:2)%power)*nrays/sum(emSurf%power))) .or. (k==nrays)) write(*,*) k, 3, k*sum(emSurf%power)/nrays
+! 			end if
 			
 			! choose tetra and corresponding face based on random value 
 			! (roulette wheel selection)
@@ -388,8 +410,9 @@ module tracing
         
         ! get emission surface and face for counting
         ! THIS A VERY SPECFIC HACK!!!
-        where ((emSurf(3)%elemData(:,1) == tetraData(ray%tetraID)%neighbors(ray%faceID,1)) .and. (emSurf(3)%elemData(:,2) == tetraData(ray%tetraID)%neighbors(ray%faceID,2))) emSurf(3)%rays(:,2) = emSurf(3)%rays(:,2) + 1
-		    
+        if (size(emSurfNames) == 3) then
+	        where ((emSurf(3)%elemData(:,1) == tetraData(ray%tetraID)%neighbors(ray%faceID,1)) .and. (emSurf(3)%elemData(:,2) == tetraData(ray%tetraID)%neighbors(ray%faceID,2))) emSurf(3)%rays(:,2) = emSurf(3)%rays(:,2) + 1
+		end if    
         
     end subroutine RayAbsorbing
     
