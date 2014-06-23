@@ -24,9 +24,9 @@ module htfem
 							   connTab(:,:),sfElems(:,:)
 		real(8),parameter :: kDefault = 1.d0
 		real(8) :: elVol,tAmbient,gnVal,elK,tc,dlow,dhigh,qBHigh,	&
-				   qBLow,absCoeff,elVolEm,elSurfEm,byTemp(4),		&
-				   bySrc(4),gnSrc(4),elVerts(4,3),elSpfns(4,4),		&
-				   elSt(4,4),bySt(4,4),elCp(4,4),noSrcRad
+				   qBLow,abCo,elVolEm,elSurfEm,byTemp(4),bySrc(4),	&
+				   gnSrc(4),elVerts(4,3),elSpfns(4,4),elSt(4,4),	&
+				   bySt(4,4),elCp(4,4),noSrcRad
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
 							   vF(:),domRhos(:),domCs(:),syCp(:),	&
@@ -135,6 +135,13 @@ module htfem
 				call assemblecapacitance(cpElemPart,elNodes,elCp)
 				cpNo(elNodes) = cpElemPart
 			end if
+
+!	Random source terms in the elements
+
+!			tval = ?
+!			call randomradiationsource(abCo,emVal,tVal,elNodes,		&
+!			sySrc)
+
 		end do
 
 		write(*,'(a)') "Assembly completed."
@@ -144,7 +151,7 @@ module htfem
 !			call readinitialvalues(syTvals)
 			syTvals = 100.d0
 		else
-		radUser = .true.
+!		radUser = .true.
 		if(radUser) then
 			open(srcfilenum,file=srcfile)
 			do i=1,nNodes
@@ -178,8 +185,8 @@ module htfem
 			cpCols,sySrc,useRK,syTvals,noVerts,connTab,nDoms,		&
 			doElems)
 		else
-			
 			call getInitialGuess(syTvals,noVerts,initGuess)
+
 			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,		&
 			initGuess,reVals,iter)
 
@@ -188,81 +195,83 @@ module htfem
 			"iterations to converge."
 
 !--------------------------------------------------------------------
-!	Function to check the effect of face area on the emission value
-!--------------------------------------------------------------------
-!			call checkemissiondifference(noVerts,connTab,sfElems,	&
-!			13,reVals)
-
-
-!--------------------------------------------------------------------
 !	Function to write facewise emission values for a given surface
 !--------------------------------------------------------------------
 
-			call writesurfaceemission(noVerts,connTab,reVals,		&
-			surfaces(13))
+!			call writesurfaceemission(noVerts,connTab,reVals,		&
+!			surfaces(11))
 
 			open(resfilenum,file=resfile)
 
 			do i=1,nNodes
-				write(resfilenum,'(3(f9.4,2x),f9.4)')noVerts(i,1:3),&
+				write(resfilenum,'(3(f9.4,2x),e20.8)')noVerts(i,1:3),&
 				revals(i)
 			end do
-
-!			write(resfilenum,*)
-
-!			call getflowrates(noVerts,connTab,doElems,domKs,sfElems,&
-!			reVals,(/1/),(/5/),3,qBLow,qBHigh)
-
-!			if(nDoms .eq. 2) then
-!				write(resfilenum,*)"Sample porosity:",vF(1)/(sum(vF))
-!			end if
-
-!			write(resfilenum,*) "Fluxes:"
-!			write(resfilenum,*) "Boundary low:", qBLow
-!			write(resfilenum,*) "Boundary high:", qBHigh
 
 			close(resfilenum)
 
 !--------------------------------------------------------------------
 !	Function to get element emissions
 !--------------------------------------------------------------------
-
-!			if(radUser) then
-!				open(emfilenum,file=emfile)
-!				if(typMat == 1) then
-!					do i=1,nElems
-!						if(doElems(i)==emDom) then
-!							call getelementvolumeemission(absCoeff,	&
-!							reVals(connTab(i,:)),elVolEm)
-!						end if
-!						write(emfilenum,*) i,elVolEm
-!					end do
-!				elseif(typMat == 2) then
-!					do i=1,nElems
-!						if(doElems(i) == emDom) then
-!							if(any(sfElems(i,:) == emSurf)) then
-!								emFc = sfElems(minloc(sfElems,		&
-!								sfElems==emSurf))
-!								call getsurfaceemission(absCoeff,	&
-!								reVals(connTab(i,:)),emFc,elSurfEm)
-!							end if
-!						end if
-!						write(emfilenum,*) i,elSurfEm
-!					end do
-!				else
-!					write(*,'(a,1x,i3,1x,a)') "The material type &
-!					&specified is: ", typMat, "an unknown. Please &
-!					&update the data file to show a correct &
-!					&material type."
-!				end if
-!				close(emfilenum)
-!			end if
+			if(radUser) then
+				call getelememissions(typMat,emDom,doElems,abCo,	&
+				reVals,connTab,sfElems)
+			end if
+!--------------------------------------------------------------------
+!	Function to get element emissions
+!--------------------------------------------------------------------
 
 			call writeresultsvtk(noVerts,connTab,nDoms,doElems,		&
 			reVals)
 		end if
 
 	end subroutine fem
+
+	subroutine getelememissions(typMat,emDom,doElems,abCo,reVals,	&
+	connTab,sfElems)
+		integer,parameter :: emFNo = 147
+		integer :: i,j,k,typMat,emDom,nElems,emFc,emSurf,elNo(4),	&
+		doElems(:),connTab(:,:),sfElems(:,:)
+		real(8) :: abCo,elVolEm,elSurfEm,reVals(:)
+		character(*),parameter :: emFile="../obj/faceEmissions.out"
+
+		
+		nElems = size(doElems,1)
+		open(emFNo,file=emFile)
+		if(typMat == 1) then
+			do i=1,nElems
+				elNo = connTab(i,:)
+				if(doElems(i)==emDom) then
+					call getelementvolumeemission(abCo,reVals(elNo),&
+					elVolEm)
+				end if
+				write(emFNo,*) i,elVolEm
+			end do
+		elseif(typMat == 2) then
+			do i=1,nElems
+				elNo = connTab(i,:)
+				if(doElems(i) == emDom) then
+					if(any(sfElems(i,:) == emSurf)) then
+						do j=1,4
+							if(sfElems(i,j) == emSurf) then
+								emFc = j
+								call getsurfaceemission(abCo,reVals(elNo),emFc,elSurfEm)
+								write(emFNo,*) i,elSurfEm
+							end if
+						end do
+					end if
+				end if
+
+			end do
+		else
+			write(*,'(a,1x,i3,1x,a)') "The material type &
+			&specified is: ", typMat, "an unknown. Please &
+			&update the data file to show a correct &
+			&material type."
+		end if
+
+		close(emFNo)
+	end subroutine getelememissions
 
     subroutine getmeshdata(meshdetails,vertices,connectivity,		&
 	domainelements,surfacenames,surfacefaces,surfaces)
@@ -426,5 +435,19 @@ module htfem
 		end if
 
 	end subroutine getInitialGuess
+
+	subroutine randomradiationsource(threshold,emVal,tVal,elNodes,	&
+	sySrc)
+		integer :: elNodes(4)
+		real(8),parameter :: sigb=5.670373e-8
+		real(8) :: threshold,check,emVal,tVal,radSource(4)
+		real(8),intent(inout) :: sySrc(:)
+
+		call random_number(check)
+		if(check.ge.threshold) then
+			radSource = sigb*emVal*(tVal**4.d0)
+			sySrc(elNodes) = sySrc(elNodes)+radSource
+		end if
+	end subroutine randomradiationsource
 
 end module htfem

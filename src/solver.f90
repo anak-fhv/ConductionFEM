@@ -14,6 +14,8 @@ module solver
 		real(8) :: alpha,acsr(:),b(:),initGuess(:)
 		real(8),allocatable :: x(:),r(:),p(:),temp(:)
 
+!		maxiter = 100000
+
 		n = size(b,1)
 		allocate(x(n))
 		allocate(r(n))
@@ -52,6 +54,10 @@ module solver
 			end if
 			call mkl_dcsrgemv("N",n,acsr,ia,ja,r,p)
 		end do
+
+		open(9876,file="solver_incomplete.out")
+		write(9876,'(e20.8)') x
+		close(9876)
 
 	end subroutine minres
 
@@ -136,8 +142,8 @@ module solver
 		allocate(temp1(n))
 		allocate(temp2(n))
 
-!		x = 0.d0
-		x = initGuess
+		x = 0.d0
+!		x = initGuess
 
 		call mkl_dcsrgemv("N",n,acsr,ia,ja,x,temp1)
 		r = b-temp1
