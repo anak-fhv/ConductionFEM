@@ -1,0 +1,7 @@
+File to add todos for Conduction FEM.
+
+23/06/2014
+Following changes to the code required today:
+	1. Change handling of boundary conditions to use surface type variable instead of sfElems array.
+	2. Change the problem data input into multiple files instead of a single datafile.dat.
+	3. Change the reading of data from the src folder to the data folder. Same for readmesh.

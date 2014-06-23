@@ -198,8 +198,8 @@ module htfem
 !	Function to write facewise emission values for a given surface
 !--------------------------------------------------------------------
 
-!			call writesurfaceemission(noVerts,connTab,reVals,		&
-!			surfaces(11))
+			call writesurfaceemission(noVerts,connTab,reVals,		&
+			surfaces(11))
 
 			open(resfilenum,file=resfile)
 
