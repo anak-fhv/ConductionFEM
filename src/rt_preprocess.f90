@@ -60,7 +60,7 @@ module pre_process
 
             
             do i = 1,size(emSurfNames)
-                id = maxval((/1,2,3/),1,emSurfNames(i) == emSurf%name)
+                id = maxval((/1:size(emSurfNames)/),1,emSurfNames(i) == emSurf%name)
 !                 write(*,*) emSurf(id)%name
                 tmp = size(emSurf(id)%elemData,1)
 	            allocate(emSurf(id)%value(tmp), stat=alloc_status)
@@ -585,10 +585,15 @@ module pre_process
         if (any(ems%name == ignoredSurfaces) .eqv. .false.) then
 	        
 	        ! get temperature at the wall
-	        if (ems%name .eq. 'zLow_Domain2') then
+	        if (ems%name .eq. emSurfNames(1)) then
 		        temp = tbounds(1)
-		    else
+		    elseif (ems%name .eq. emSurfNames(2)) then
 			    temp = tbounds(2)
+	        else
+		        write(*,*) "something went wrong in chossing wall temperature!"
+		        write(*,*) ems%name
+		        write(*,*) emSurfNames
+		        stop
 	        end if  
 	        
 		    ! it is one of the wall boundaries
