@@ -12,7 +12,7 @@ module rt_properties
     real(dp)                         :: Etotal = 0.0
     real(dp)                         :: Eleft = 0.0
     integer, parameter               :: npart = 20          ! number of partitions for data input
-    integer, parameter               :: nrays = 1000000  ! number of rays to be emitted in total    
+    integer, parameter               :: nrays = 100000  ! number of rays to be emitted in total    
     integer, parameter               :: nRayPaths = 100  ! number of ray path written out in file (maximal 10000)
     character(len = 100), dimension(2), parameter :: ignoredSurfaces = (/"Iface_Domain1", "Iface_Domain2"/)
     
@@ -33,6 +33,7 @@ module rt_properties
     character(len=20), parameter                :: data_fname = "RPC_2d_128" ! prefix for input data file
 !     character(len=20), parameter                :: data_fname = "cube2d" ! prefix for input data file
     character(len=100), dimension(3), parameter :: emSurfNames = (/"zLow_Domain2", "zHigh_Domain2", "Iface_Domain1"/)
+!     character(len=100), dimension(2), parameter :: emSurfNames = (/"zLow_Domain2", "zHigh_Domain2"/)
     character(len=20), parameter                :: RT_setup = 'tomo'  ! select which setup is considered, values are 'tomo' or 'led'
     character(len=20), parameter                :: reflection = 'diffuse'  ! select which type of reflection is used (specular or diffuse) for interface
     character(len=30), parameter                :: input = 'faceEmissions_tomo.bin'
