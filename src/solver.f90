@@ -154,6 +154,12 @@ module solver
 		delta0 = delta
 
 		do i=1,maxiter
+			if(norm2(r) /= norm2(r)) then
+				write(*,'(a)') "Error in solver: residual NaN"
+				write(*,'(a)') "Check problem definition, including&
+				&mesh refinement, for error source."
+				exit
+			end if
 			if(mod(i,1000).eq.0) then
 				write(*,'(a,1x,i6)') 'Iteration number: ',i
 				write(*,'(a,1x,f15.3)') "Residual ratio: ", norm2(r)/cc
