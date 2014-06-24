@@ -142,12 +142,13 @@ module solver
 		allocate(temp1(n))
 		allocate(temp2(n))
 
-		x = 0.d0
-!		x = initGuess
+!		x = 0.d0
+		x = initGuess
 
 		call mkl_dcsrgemv("N",n,acsr,ia,ja,x,temp1)
 		r = b-temp1
-		rst = 1.d0
+!		rst = 1.d0
+		call random_number(rst)
 		p = r
 		delta = dot_product(rst,r)
 		write(*,'(a,1x,f15.3)') "Starting delta: ", delta
@@ -157,9 +158,15 @@ module solver
 			if(norm2(r) /= norm2(r)) then
 				write(*,'(a)') "Error in solver: residual NaN"
 				write(*,'(a)') "Check problem definition, including&
-				&mesh refinement, for error source."
+				& mesh refinement, for error source."
 				exit
 			end if
+!			open(987,file="../obj/xvals.out")
+!			write(987,*) "x				rst				r"
+!			do j=1,n
+!				write(987,*) x(j),rst(j),r(j)
+!			end do
+!			close(987)
 			if(mod(i,1000).eq.0) then
 				write(*,'(a,1x,i6)') 'Iteration number: ',i
 				write(*,'(a,1x,f15.3)') "Residual ratio: ", norm2(r)/cc
