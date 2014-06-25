@@ -30,7 +30,7 @@ module htfem
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
 							   vF(:),domRhos(:),domCs(:),syCp(:),	&
-							   initGuess(:),rescheck(:)
+							   initGuess(:),rescheck(:),resmooth(:)
 		character(*),parameter :: objdir = "../obj/",				&
 								  resfile = objdir//"results.out",	&
 								  outfile = objdir//"outputs.out",	&
@@ -161,22 +161,23 @@ module htfem
 !				close(srcfilenum)
 !			end if
 
-!			allocate(rescheck(nNodes))
-!			open(2468,file=objdir//"resvals.out")
-!			do i=1,nNodes
-!				read(2468,*) byTemp
-!				rescheck(i) = byTemp(4)
-!			end do
-!			close(2468)
-!			call ansource(noVerts,connTab,rescheck,surfaces(11),sySrc)
+			allocate(rescheck(nNodes))
+			open(2468,file=objdir//"results0.out")
+			do i=1,nNodes
+				read(2468,*) byTemp
+				rescheck(i) = byTemp(4)
+			end do
+			close(2468)
+
+			call ansource(noVerts,connTab,rescheck,surfaces(11),sySrc)
 
 !			deallocate(rescheck)
 
-!			open(1357,file=objdir//"tempsource.out")
-!			write(1357,'(e20.8)') sySrc
-!			close(1357)
+			open(1357,file=objdir//"tempsource.out")
+			write(1357,'(e20.8)') sySrc
+			close(1357)
 
-!			call writepresetupdata(stNo,sySrc)
+			call writepresetupdata(stNo,sySrc)
 
 			call setupfinalequations(stNo,sySrc,syTvals)
 		end if
@@ -210,30 +211,40 @@ module htfem
 			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,		&
 			initGuess,reVals,iter)
 
+			write(*,'(a)') "Solution completed."
+			write(*,'(a,i5,2x,a)') "This program took: ",iter,		&
+			"iterations to converge."
+
 			open(resfilenum,file=resfile)
 
 			do i=1,nNodes
-				write(resfilenum,'(3(f9.4,2x),e20.8)')noVerts(i,1:3),&
+				write(resfilenum,'(4e16.8,2x)')noVerts(i,1:3),		&
 				revals(i)
 			end do
 
 			close(resfilenum)
 
-!			allocate(rescheck(nNodes))
-!			call solvesystem(sySt,sySrc,stRowPtr,stCols,rescheck)
+			allocate(resmooth(nNodes))
+			resmooth = rescheck*0.999d0 + reVals*0.001d0
 
-!			open(197,file=objdir//"rescomp.out")
+			open(1086,file=objdir//"smoothres.out")
+			write(1086,'(e16.8)') resmooth
+			close(1086)
 
-!			do i=1,nNodes
-!				write(197,'(3(f9.4,2x),e20.8)')noVerts(i,1:3),&
-!				rescheck(i)
-!			end do
+			deallocate(rescheck)
+			allocate(rescheck(nNodes))
+			call solvesystem(sySt,sySrc,stRowPtr,stCols,rescheck)
 
-!			close(197)
+			open(197,file=objdir//"rescomp.out")
 
-			write(*,'(a)') "Solution completed."
-			write(*,'(a,i5,2x,a)') "This program took: ",iter,		&
-			"iterations to converge."
+			do i=1,nNodes
+				write(197,'(4e16.8,2x)')noVerts(i,1:3),		&
+				rescheck(i)
+			end do
+
+			close(197)
+
+			write(*,'(a,2x,e16.8)') "Norm of differences: ", norm2(rescheck-reVals)
 
 !--------------------------------------------------------------------
 !	Function to write facewise emission values for a given surface
@@ -295,7 +306,8 @@ module htfem
 		real(8) :: aC,T1,T2,T3,fcA,emVal,recVal,reVals(:),			&
 		noVerts(:,:),sfSrc(3),cent(3)
 		real(8),parameter :: sigb = 5.670373e-8, kel = 273.15d0,	&
-		Th = 373.15d0, Tl = 283.15d0
+		Th = 373.15d0, Tl = 283.15d0, Te1 = 356.2553526d0,			&
+		Te2 = 300.04464735d0
 		real(8),intent(inout) :: sySrc(:)
 		type(surfaceData) :: emSurf
 
@@ -314,10 +326,12 @@ module htfem
 			cent = sum(noVerts(bFcNo,:))/3.d0
 			if(cent(3).lt.0.d0) then
 				recVal = aC*sigb*(Th**4.d0)*fcA
+!				emVal = aC*sigb*(Te1**4.d0)*fcA
 				sfSrc = (recVal-emVal)/3.d0
 				sySrc(bFcNo) = sySrc(bFcNo) + sfSrc
 			else
 				recVal = aC*sigb*(Tl**4.d0)*fcA
+!				emVal = aC*sigb*(Te2**4.d0)*fcA
 				sfSrc = (recVal-emVal)/3.d0
 				sySrc(bFcNo) = sySrc(bFcNo) + sfSrc
 			end if
@@ -353,7 +367,8 @@ module htfem
 						do j=1,4
 							if(sfElems(i,j) == emSurf) then
 								emFc = j
-								call getsurfaceemission(abCo,reVals(elNo),emFc,elSurfEm)
+								call getsurfaceemission(abCo,		&
+								reVals(elNo),emFc,elSurfEm)
 								write(emFNo,*) i,elSurfEm
 							end if
 						end do
