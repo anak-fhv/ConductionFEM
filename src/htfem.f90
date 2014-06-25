@@ -30,7 +30,7 @@ module htfem
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
 							   vF(:),domRhos(:),domCs(:),syCp(:),	&
-							   initGuess(:)
+							   initGuess(:),rescheck(:),resmooth(:)
 		character(*),parameter :: objdir = "../obj/",				&
 								  resfile = objdir//"results.out",	&
 								  outfile = objdir//"outputs.out",	&
@@ -38,7 +38,7 @@ module htfem
 								  srcfile = objdir//"radsource.out"
 		character(16),allocatable :: sfFcname(:)
 		logical,parameter :: gnDefault = .false.,trDefault = .false.
-		logical ::	gnUser,trUser,useRK,radUser
+		logical ::	gnUser,trUser,useRK,radUser=.false.
 		type(noderow) :: noElemPart(4),cpElemPart(4)
 		type(noderow),allocatable :: stNo(:),cpNo(:)
 		type(elementbins),allocatable :: elbins(:)
@@ -151,18 +151,38 @@ module htfem
 !			call readinitialvalues(syTvals)
 			syTvals = 100.d0
 		else
-!		radUser = .true.
-		if(radUser) then
-			open(srcfilenum,file=srcfile)
+!!			radUser = .true.
+!			if(radUser) then
+!				open(srcfilenum,file=srcfile)
+!				do i=1,nNodes
+!					read(srcfilenum,*) noSrcRad
+!					sySrc(i) = sySrc(i)+noSrcRad
+!				end do
+!				close(srcfilenum)
+!			end if
+
+			allocate(rescheck(nNodes))
+			open(2468,file=objdir//"results0.out")
 			do i=1,nNodes
-				read(srcfilenum,*) noSrcRad
-				sySrc(i) = sySrc(i)+noSrcRad
+				read(2468,*) byTemp
+				rescheck(i) = byTemp(4)
 			end do
-			close(srcfilenum)
-		end if
+			close(2468)
+
+			call ansource(noVerts,connTab,rescheck,surfaces(11),sySrc)
+
+!			deallocate(rescheck)
+
+			open(1357,file=objdir//"tempsource.out")
+			write(1357,'(e20.8)') sySrc
+			close(1357)
+
+			call writepresetupdata(stNo,sySrc)
+
 			call setupfinalequations(stNo,sySrc,syTvals)
 		end if
 
+		radUser = .false.
 		call collapse_noderows(stNo,sySt,stCols,stRowPtr)
 
 		if(trUser) then
@@ -186,6 +206,7 @@ module htfem
 			doElems)
 		else
 			call getInitialGuess(syTvals,noVerts,initGuess)
+			initGuess = 0.d0
 
 			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,		&
 			initGuess,reVals,iter)
@@ -193,6 +214,37 @@ module htfem
 			write(*,'(a)') "Solution completed."
 			write(*,'(a,i5,2x,a)') "This program took: ",iter,		&
 			"iterations to converge."
+
+			open(resfilenum,file=resfile)
+
+			do i=1,nNodes
+				write(resfilenum,'(4e16.8,2x)')noVerts(i,1:3),		&
+				revals(i)
+			end do
+
+			close(resfilenum)
+
+			allocate(resmooth(nNodes))
+			resmooth = rescheck*0.999d0 + reVals*0.001d0
+
+			open(1086,file=objdir//"smoothres.out")
+			write(1086,'(e16.8)') resmooth
+			close(1086)
+
+			deallocate(rescheck)
+			allocate(rescheck(nNodes))
+			call solvesystem(sySt,sySrc,stRowPtr,stCols,rescheck)
+
+			open(197,file=objdir//"rescomp.out")
+
+			do i=1,nNodes
+				write(197,'(4e16.8,2x)')noVerts(i,1:3),		&
+				rescheck(i)
+			end do
+
+			close(197)
+
+			write(*,'(a,2x,e16.8)') "Norm of differences: ", norm2(rescheck-reVals)
 
 !--------------------------------------------------------------------
 !	Function to write facewise emission values for a given surface
@@ -227,6 +279,66 @@ module htfem
 
 	end subroutine fem
 
+	subroutine writepresetupdata(stNo,sySrc)
+		integer,parameter :: valfilno = 195,srcfilno = 153
+		integer :: i,j,k,nNodes,npercol
+		real(8) :: sySrc(:)
+		character(*),parameter :: objdir = "../obj/",				&
+								  valfil = objdir//"stvals.out",	&
+								  srcfil = objdir//"scvals.out"
+		type(noderow) :: stNo(:)
+
+		nNodes = size(stNo,1)
+		open(valfilno,file=valfil)
+		open(srcfilno,file=srcfil)
+		do i=1,nNodes
+			write(srcfilno,*) sySrc(i)
+			write(valfilno,*) "row: ",i
+			npercol = size(stNo(i)%col,1)
+			do j=1,npercol
+				write(valfilno,'(i8,2x,e20.8)') stNo(i)%col(j),stNo(i)%val(j)
+			end do
+		end do
+	end subroutine writepresetupdata
+
+	subroutine ansource(noVerts,connTab,reVals,emSurf,sySrc)
+		integer :: i,j,k,nEmFc,emEl,emElFc,bFcNo(3),connTab(:,:)
+		real(8) :: aC,T1,T2,T3,fcA,emVal,recVal,reVals(:),			&
+		noVerts(:,:),sfSrc(3),cent(3)
+		real(8),parameter :: sigb = 5.670373e-8, kel = 273.15d0,	&
+		Th = 373.15d0, Tl = 283.15d0, Te1 = 356.2553526d0,			&
+		Te2 = 300.04464735d0
+		real(8),intent(inout) :: sySrc(:)
+		type(surfaceData) :: emSurf
+
+		nEmFc = size(emSurf%elNum,1)
+		aC = 1.d0
+		do i=1,nEmFc
+			emEl = emSurf%elNum(i)
+			emElFc = emSurf%fcNum(i)
+			call bfacenodes(emElFc,bFcNo)
+			bFcNo = connTab(emEl,bFcNo)
+			fcA = facearea(noVerts(bFcNo,:))
+			T1 = reVals(bFcNo(1))		! + kel
+			T2 = reVals(bFcNo(2)) 		! + kel
+			T3 = reVals(bFcNo(3)) 		! + kel
+			emVal = fcA*sigB*aC*((T1+T2+T3)/3.d0)**4
+			cent = sum(noVerts(bFcNo,:))/3.d0
+			if(cent(3).lt.0.d0) then
+				recVal = aC*sigb*(Th**4.d0)*fcA
+!				emVal = aC*sigb*(Te1**4.d0)*fcA
+				sfSrc = (recVal-emVal)/3.d0
+				sySrc(bFcNo) = sySrc(bFcNo) + sfSrc
+			else
+				recVal = aC*sigb*(Tl**4.d0)*fcA
+!				emVal = aC*sigb*(Te2**4.d0)*fcA
+				sfSrc = (recVal-emVal)/3.d0
+				sySrc(bFcNo) = sySrc(bFcNo) + sfSrc
+			end if
+		end do
+
+	end subroutine ansource
+
 	subroutine getelememissions(typMat,emDom,doElems,abCo,reVals,	&
 	connTab,sfElems)
 		integer,parameter :: emFNo = 147
@@ -255,7 +367,8 @@ module htfem
 						do j=1,4
 							if(sfElems(i,j) == emSurf) then
 								emFc = j
-								call getsurfaceemission(abCo,reVals(elNo),emFc,elSurfEm)
+								call getsurfaceemission(abCo,		&
+								reVals(elNo),emFc,elSurfEm)
 								write(emFNo,*) i,elSurfEm
 							end if
 						end do
