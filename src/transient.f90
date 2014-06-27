@@ -37,23 +37,24 @@ module transient
 !-------------------------------------------------------------------
 
 	subroutine transientsolve(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,	&
-	useRK,syInit,noVerts,connTab,nDoms,doElems)
+	useRK,syInit,noVerts,connTab,nDoms,doElems,resFilePre)
 		integer :: nDoms,iaSt(:),jaSt(:),iaCp(:),jaCp(:),doElems(:),&
 		connTab(:,:)
 		real(8) :: sySt(:),syCp(:),sySrc(:),syInit(:),noverts(:,:)
 		logical :: useRK
+		character(*) :: resFilePre
 
 		if(useRK) then
 			call transientRK(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,	&
-			syInit,noVerts,connTab,nDoms,doElems)
+			syInit,noVerts,connTab,nDoms,doElems,resFilePre)
 		else
 			call transientFD(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,	&
-			syInit,noVerts,connTab,nDoms,doElems)
+			syInit,noVerts,connTab,nDoms,doElems,resFilePre)
 		end if
 	end subroutine transientsolve
 
 	subroutine transientFD(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,		&
-	syInit,noVerts,connTab,nDoms,doElems)
+	syInit,noVerts,connTab,nDoms,doElems,resFilePre)
 		integer,parameter :: trfileno=888
 		integer :: i,j,fno,n,nv,ntstep,nDoms,iter,iaSt(:),jaSt(:),	&
 		iaCp(:),jaCp(:),doElems(:),connTab(:,:)
@@ -61,9 +62,9 @@ module transient
 		syInit(:),noVerts(:,:)
 		real(8),allocatable :: CKLhs(:),CKRhs(:),FRhs(:),Tnew(:),	&
 		kTRhs(:),initGuess(:)
-		character(*),parameter :: objdir="../obj/",fres="res",		&
-		fext=".vtk"
+		character(*),parameter ::fres="res",fext=".vtk"
 		character(len=100) :: fName,sysCall
+		character(*) :: resFilePre
 
 		n = size(sySrc,1)
 		allocate(FRhs(n))
@@ -97,30 +98,34 @@ module transient
 !			close(trfileno)
 			if(mod(i,10).eq.0) then
 				fno = (i+1)/10
+!				fName = trim(adjustl(resFilePre))//fno//fext
+				write(fname,*) fno
+				fName = trim(adjustl(resFilePre))//trim(adjustl(fname))
+				fName = trim(adjustl(fName))//fext
 				call writeresultsvtk(noVerts,connTab,nDoms,doElems,		&
-				syInit)
-				write(fName,*) fno
-				write(fName,*) objdir//fres//trim(adjustl(fName))//fext
-				write(sysCall,*)"mv "//objdir//fres//fext//" "//trim(adjustl(fName))
-				write(*,*) sysCall
-				call system(sysCall)
+				syInit,trim(adjustl(fname)))
+!				write(fName,*) fno
+!				write(fName,*) objdir//fres//trim(adjustl(fName))//fext
+!				write(sysCall,*)"mv "//objdir//fres//fext//" "//trim(adjustl(fName))
+!				write(*,*) sysCall
+!				call system(sysCall)
 			end if
 		end do
 		
 	end subroutine transientFD
 
 	subroutine transientRK(sySt,iaSt,jaSt,syCp,iaCp,jaCp,sySrc,		&
-	syInit,noVerts,connTab,nDoms,doElems)
+	syInit,noVerts,connTab,nDoms,doElems,resFilePre)
 		integer,parameter :: trfileno=888
-		integer :: i,j,k,n,ntstep,nDoms,iaSt(:),jaSt(:),iaCp(:),	&
+		integer :: i,j,k,n,ntstep,nDoms,fno,iaSt(:),jaSt(:),iaCp(:),&
 		jaCp(:),doElems(:),connTab(:,:)
 		real(8) :: tstep,tfinal,sySt(:),syCp(:),sySrc(:),syInit(:),	&
 		noVerts(:,:)
 		real(8),allocatable :: kTprod(:),rhs(:),diffT(:),newT(:),	&
 		k1(:),k2(:),k3(:),k4(:)
-		character(*),parameter :: objdir="../obj/",fres="res",		&
-		fext=".vtk"
+		character(*),parameter :: fres="res",fext=".vtk"
 		character(len=100) :: fName,sysCall
+		character(*) :: resFilePre
 
 		n = size(sySrc,1)
 		allocate(kTprod(n))
@@ -152,20 +157,17 @@ module transient
 			if(allocated(k2)) deallocate(k2)
 			if(allocated(k3)) deallocate(k3)
 			if(allocated(k4)) deallocate(k4)
+			fno = (i+1)/10
+			write(fname,*) fno
+			fName = trim(adjustl(resFilePre))//trim(adjustl(fname))
+			fName = trim(adjustl(fName))//fext
 			call writeresultsvtk(noVerts,connTab,nDoms,doElems,		&
-			syInit)
-			write(fName,*) i
-			write(fName,*) objdir//fres//trim(adjustl(fName))//fext
-			write(sysCall,*)"mv "//objdir//fres//fext//" "//trim(adjustl(fName))
-			write(*,*) sysCall
-			call system(sysCall)
-
-!			open(trfileno,file=objdir//ftr)
-!			do j=1,n
-!				write(trfileno,'(3(f9.4,2x),f9.4)') noVerts(j,:),	&
-!				syInit(j)
-!			end do
-!			close(trfileno)
+			syInit,trim(adjustl(fname)))
+!			write(fName,*) i
+!			write(fName,*) objdir//fres//trim(adjustl(fName))//fext
+!			write(sysCall,*)"mv "//objdir//fres//fext//" "//trim(adjustl(fName))
+!			write(*,*) sysCall
+!			call system(sysCall)
 
 		end do
 

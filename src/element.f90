@@ -26,6 +26,13 @@ module element
 		elJac(:,1) = 1.0d0
 	end function elementjacobian
 
+	function elementvolume(ec) result(elVol)
+		real(8) :: elVol,ec(4,3),elJac(4,4)
+
+		elJac = elementjacobian(ec)
+		elVol = abs(det4(elJac))/6.d0
+	end function elementvolume
+
 	subroutine invertcoords(vm)
 		integer,parameter :: m=4,n=4,lda=4,lwork=256
 		integer :: info,ipiv(4)

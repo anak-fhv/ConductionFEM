@@ -13,9 +13,9 @@ module htfem
 	contains
 
 	subroutine fem()
-		integer,parameter :: resfilenum=101, outfilenum=102,		&	! Files to store results and other output
-							 emfilenum=105,nbins=100, bindim=3,		&
-							 srcfilenum=106
+!		integer,parameter :: resfilenum=101, outfilenum=102,		&	! Files to store results and other output
+!							 emfilenum=105,nbins=100, bindim=3,		&
+!							 srcfilenum=106
 		integer :: nNodes,nElems,nDoms,nSurfs,elDom,fcBytype,i,j,k,	&	! Prefixes: n=>number, el=>element, fc=>face
 				   typMat,emDom,emFc,iter,meshVals(7),elNodes(4),	&	! by=>boundary, sf=>surface, gn=>generation, no=>node
 				   elByfaces(4)
@@ -24,29 +24,36 @@ module htfem
 							   connTab(:,:),sfElems(:,:)
 		real(8),parameter :: kDefault = 1.d0
 		real(8) :: elVol,tAmbient,gnVal,elK,tc,dlow,dhigh,qBHigh,	&
-				   qBLow,abCo,elVolEm,elSurfEm,byTemp(4),bySrc(4),	&
-				   gnSrc(4),elVerts(4,3),elSpfns(4,4),elSt(4,4),	&
-				   bySt(4,4),elCp(4,4),noSrcRad
+				   qBLow,abCo,elVolEm,elSurfEm,smFact,byTemp(4),	&
+				   bySrc(4),gnSrc(4),elVerts(4,3),elSpfns(4,4),		&
+				   elSt(4,4),bySt(4,4),elCp(4,4),noSrcRad
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
 							   vF(:),domRhos(:),domCs(:),syCp(:),	&
-							   initGuess(:),rescheck(:),resmooth(:)
-		character(*),parameter :: objdir = "../obj/",				&
-								  resfile = objdir//"results.out",	&
-								  outfile = objdir//"outputs.out",	&
+							   initGuess(:),rescheck(:),smres(:)
+		character(*),parameter :: datdir = "../data/",				&
+								  pDatFile = "problemdata.dat",		&
+								  resdir = "../results/",			&
+								  objdir = "../obj/",				&
 								  emfile = objdir//"emissions.out",	&
 								  srcfile = objdir//"radsource.out"
+		character(72) :: meshFile,byFile,resFile,resVtk,oldResFile,	&
+		transResPre
 		character(16),allocatable :: sfFcname(:)
 		logical,parameter :: gnDefault = .false.,trDefault = .false.
-		logical ::	gnUser,trUser,useRK,radUser=.false.
+		logical :: trUser,coupled,gnUser,useRK,doSmoothing
 		type(noderow) :: noElemPart(4),cpElemPart(4)
 		type(noderow),allocatable :: stNo(:),cpNo(:)
 		type(elementbins),allocatable :: elbins(:)
 		type(surfaceData),allocatable :: surfaces(:)
 
-		write(*,'(a)') "Now reading mesh file..."
+		call getproblemdata(datdir,pDatFile,meshFile,byFile,		&			! Make an arrangement for material data to be read here: Make the boundary reader exclusive to boundaries.
+		resFile,resVtk,trUser,coupled)
 
-		call getmeshdata(meshVals,noVerts,connTab,doElems,			&
+		write(*,'(a)') "Now reading mesh file..."
+		meshFile = datdir//trim(adjustl(meshFile))
+
+		call getmeshdata(meshFile,meshVals,noVerts,connTab,doElems,	&
 		sfFcname,sfElems,surfaces)
 
 		write(*,'(a)') "Meshdetails received."
@@ -56,13 +63,13 @@ module htfem
 		nDoms  = meshVals(6)
 		nSurfs = meshVals(7)
 
-		dlow = minval(noverts(:,bindim),1)
-		dhigh = maxval(noverts(:,bindim),1)
+!		dlow = minval(noverts(:,bindim),1)
+!		dhigh = maxval(noverts(:,bindim),1)
 
 		allocate(sySrc(nNodes))
 		allocate(syTvals(nNodes))
 		allocate(stNo(nNodes))
-		allocate(elbins(nbins))
+!		allocate(elbins(nbins))
 
 		if(nDoms .gt. 1) then
 			allocate(vF(nDoms))
@@ -72,8 +79,9 @@ module htfem
 		sySrc = 0.d0
 		syTvals = 0.d0
 
-		call readboundaryconditions(meshVals,byCs,domKs,domRhos,	&
-		domCs,sfVals,tAmbient,trUser,gnUser)
+		byFile = datdir//trim(adjustl(byFile))
+		call readboundaryconditions(byFile,meshVals,byCs,domKs,		&
+		domRhos,domCs,sfVals,tAmbient,gnUser,gnVal)
 
 !		trUser = .false.
 		if(trUser) then
@@ -138,146 +146,211 @@ module htfem
 
 !	Random source terms in the elements
 
-!			tval = ?
-!			call randomradiationsource(abCo,emVal,tVal,elNodes,		&
-!			sySrc)
-
 		end do
 
 		write(*,'(a)') "Assembly completed."
 
 		if(trUser) then
-! Empty call created for later implementation
+
+! 			Empty call created for later implementation
 !			call readinitialvalues(syTvals)
+
 			syTvals = 100.d0
-		else
-!!			radUser = .true.
-!			if(radUser) then
-!				open(srcfilenum,file=srcfile)
-!				do i=1,nNodes
-!					read(srcfilenum,*) noSrcRad
-!					sySrc(i) = sySrc(i)+noSrcRad
-!				end do
-!				close(srcfilenum)
-!			end if
-
-			allocate(rescheck(nNodes))
-			open(2468,file=objdir//"results0.out")
-			do i=1,nNodes
-				read(2468,*) byTemp
-				rescheck(i) = byTemp(4)
-			end do
-			close(2468)
-
-			call ansource(noVerts,connTab,rescheck,surfaces(11),sySrc)
-
-!			deallocate(rescheck)
-
-			open(1357,file=objdir//"tempsource.out")
-			write(1357,'(e20.8)') sySrc
-			close(1357)
-
-			call writepresetupdata(stNo,sySrc)
-
-			call setupfinalequations(stNo,sySrc,syTvals)
-		end if
-
-		radUser = .false.
-		call collapse_noderows(stNo,sySt,stCols,stRowPtr)
-
-		if(trUser) then
+			call collapse_noderows(stNo,sySt,stCols,stRowPtr)
+			deallocate(stNo)
 			call collapse_noderows(cpNo,syCp,cpCols,cpRowPtr)
-		end if
-
-		deallocate(stNo)
-
-		if(trUser) then
 			deallocate(cpNo)
+			useRK = .true.
+			transResPre = resdir//"res_iter_"
+			call transientsolve(sySt,stRowPtr,stCols,syCp,cpRowPtr,	&
+			cpCols,sySrc,useRK,syTvals,noVerts,connTab,nDoms,		&
+			doElems,transResPre)
+
+			return
+
 		end if
+
+
+		oldResFile = resdir//"results0.out"
+		abCo = 1.d0
+		call ansourcesurf(trim(adjustl(oldResFile)),abCo,noVerts,	&
+		connTab,surfaces(11),sySrc)
+
+		call writepresetupdata(stNo,sySrc)
+
+		call setupfinalequations(stNo,sySrc,syTvals)
+
+!		coupled = .false.
+		call collapse_noderows(stNo,sySt,stCols,stRowPtr)
+		deallocate(stNo)
 
 		write(*,*)""
 		write(*,'(a)') "Entered solution step..."
 
+		call getInitialGuess(syTvals,noVerts,initGuess)
+		initGuess = 0.d0
 
-		if(trUser) then
-!			useRK = .true.
-			call transientsolve(sySt,stRowPtr,stCols,syCp,cpRowPtr,	&
-			cpCols,sySrc,useRK,syTvals,noVerts,connTab,nDoms,		&
-			doElems)
-		else
-			call getInitialGuess(syTvals,noVerts,initGuess)
-			initGuess = 0.d0
+		call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,initGuess,	&
+		reVals,iter)
 
-			call bicgstab(sySt,stRowPtr,stCols,sySrc,100000,		&
-			initGuess,reVals,iter)
+		write(*,'(a)') "Solution completed."
+		write(*,'(a,i5,2x,a)')"This program took: ",iter,"iterations&
+		& to converge."
 
-			write(*,'(a)') "Solution completed."
-			write(*,'(a,i5,2x,a)') "This program took: ",iter,		&
-			"iterations to converge."
+		doSmoothing = .true.
+		if(doSmoothing) then
+!			oldResFile = trim(adjustl(datdir))//oldResFile
+			smFact = 0.99d0
+			call expsmooth(reVals,smFact,trim(adjustl(oldResFile)),	&
+			smRes)
+			reVals = smRes
+		end if
 
-			open(resfilenum,file=resfile)
+		call writeresults(noVerts,connTab,nDoms,doElems,reVals,		&
+		resdir,resFile,resVtk)
 
-			do i=1,nNodes
-				write(resfilenum,'(4e16.8,2x)')noVerts(i,1:3),		&
-				revals(i)
-			end do
+		call writesurfaceemission(noVerts,connTab,reVals,surfaces(11))
 
-			close(resfilenum)
-
-			allocate(resmooth(nNodes))
-			resmooth = rescheck*0.999d0 + reVals*0.001d0
-
-			open(1086,file=objdir//"smoothres.out")
-			write(1086,'(e16.8)') resmooth
-			close(1086)
-
-			deallocate(rescheck)
-			allocate(rescheck(nNodes))
-			call solvesystem(sySt,sySrc,stRowPtr,stCols,rescheck)
-
-			open(197,file=objdir//"rescomp.out")
-
-			do i=1,nNodes
-				write(197,'(4e16.8,2x)')noVerts(i,1:3),		&
-				rescheck(i)
-			end do
-
-			close(197)
-
-			write(*,'(a,2x,e16.8)') "Norm of differences: ", norm2(rescheck-reVals)
-
-!--------------------------------------------------------------------
-!	Function to write facewise emission values for a given surface
-!--------------------------------------------------------------------
-
-			call writesurfaceemission(noVerts,connTab,reVals,		&
-			surfaces(11))
-
-			open(resfilenum,file=resfile)
-
-			do i=1,nNodes
-				write(resfilenum,'(3(f9.4,2x),e20.8)')noVerts(i,1:3),&
-				revals(i)
-			end do
-
-			close(resfilenum)
-
-!--------------------------------------------------------------------
-!	Function to get element emissions
-!--------------------------------------------------------------------
-			if(radUser) then
-				call getelememissions(typMat,emDom,doElems,abCo,	&
-				reVals,connTab,sfElems)
-			end if
-!--------------------------------------------------------------------
-!	Function to get element emissions
-!--------------------------------------------------------------------
-
-			call writeresultsvtk(noVerts,connTab,nDoms,doElems,		&
-			reVals)
+		if(coupled) then
+			call getelememissions(typMat,emDom,doElems,abCo,reVals,	&
+			connTab,sfElems)
 		end if
 
 	end subroutine fem
+
+!--------------------------------------------------------------------
+!	Subroutine to get essential problem data
+!--------------------------------------------------------------------
+
+	subroutine getproblemdata(datdir,pDatFile,meshFile,byFile,		&
+	resFile,resVtk,trUser,coupled)
+		integer,parameter :: fno = 101
+		character(*) :: datdir,pDatFile
+		character(72) :: meshFile,byFile,resFile,resVtk
+		logical :: trUser,coupled
+
+		open(fno,file=datdir//pDatFile)
+		read(fno,*)
+		read(fno,*) meshFile
+		read(fno,*)
+		read(fno,*)
+		read(fno,*) byFile
+		read(fno,*)
+		read(fno,*)
+		read(fno,*) resFile
+		read(fno,*)
+		read(fno,*)
+		read(fno,*) resVtk
+		read(fno,*)
+		read(fno,*)
+		read(fno,*) trUser
+		read(fno,*)
+		read(fno,*)
+		read(fno,*) coupled
+		close(fno)
+	end subroutine getproblemdata
+
+!--------------------------------------------------------------------
+!	End subroutine
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!	Smooth results (exponential smoothing)
+!--------------------------------------------------------------------
+
+	subroutine expsmooth(reVals,smFact,oldResFile,smRes)
+		integer,parameter :: oldResFno = 105
+		integer :: i,nNodes
+		real(8) :: smFact,temp(4),reVals(:)
+		real(8),allocatable :: smRes(:),oldReVals(:)
+		character(*) :: oldResFile
+
+		write(*,*) "Oldresfile: ",oldResFile
+		nNodes = size(reVals,1)
+		allocate(smRes(nNodes))
+		allocate(oldReVals(nNodes))
+
+		open(oldResFno,file=oldResFile)
+		do i=1,nNodes
+			read(oldResFno,*) temp
+			oldReVals(i) = temp(4)
+		end do
+		close(oldResFno)
+
+		smRes = smFact*oldReVals + (1.d0-smFact)*reVals
+
+		write(*,*) "Compare: "
+		write(*,*) oldReVals(5), reVals(5), smRes(5)
+	end subroutine expsmooth
+
+!--------------------------------------------------------------------
+!	End subroutine
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!	Verify against PARDISO
+!--------------------------------------------------------------------
+
+	subroutine rescheck(noVerts,sySt,sySrc,stRowPtr,stCols,resdir,	&
+	resFile,resmkl)
+		integer :: i,nNodes,stRowPtr(:),stCols(:)
+		integer,parameter :: resChFileNum = 104
+		real(8) :: sySt(:),sySrc(:),noVerts(:,:)
+		real(8),allocatable :: resmkl(:)
+		character(*),parameter :: rFP = "pardiso_"
+		character(*) :: resdir,resFile
+
+		nNodes = size(sySrc,1)
+		allocate(resmkl(nNodes))
+		call solvesystem(sySt,sySrc,stRowPtr,stCols,resmkl)
+
+		resFile = trim(adjustl(resdir))//rFP//trim(adjustl(resFile))
+		open(resChFileNum,file=resFile)
+
+		do i=1,nNodes
+			write(197,'(4e16.8,2x)')noVerts(i,1:3),resmkl(i)
+		end do
+
+		close(197)		
+	end subroutine rescheck
+
+!--------------------------------------------------------------------
+!	End verification
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!	Result writer
+!--------------------------------------------------------------------
+
+	subroutine writeresults(noVerts,connTab,nDoms,doElems,reVals,	&
+	resdir,resFile,resVtk)
+		integer,parameter :: resFileNum = 103
+		integer :: i,nDoms,nNodes,doElems(:),connTab(:,:)
+		real(8) :: reVals(:),noVerts(:,:)
+		character(*) :: resdir,resFile,resVtk
+
+		resFile = resdir//trim(adjustl(resFile))
+		resVtk = resdir//trim(adjustl(resVtk))
+		nNodes = size(reVals,1)
+
+		open(resFileNum,file=resfile)
+		do i=1,nNodes
+			write(resfilenum,'(4e16.8,2x)')noVerts(i,1:3),revals(i)
+		end do
+		close(resFileNum)
+
+		call writeresultsvtk(noVerts,connTab,nDoms,doElems,reVals,	&
+		resVtk)
+		
+	end subroutine writeresults
+
+!--------------------------------------------------------------------
+!	End result writer
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!	Logger for stiffness and source terms
+!--------------------------------------------------------------------
 
 	subroutine writepresetupdata(stNo,sySrc)
 		integer,parameter :: valfilno = 195,srcfilno = 153
@@ -301,43 +374,82 @@ module htfem
 		end do
 	end subroutine writepresetupdata
 
-	subroutine ansource(noVerts,connTab,reVals,emSurf,sySrc)
-		integer :: i,j,k,nEmFc,emEl,emElFc,bFcNo(3),connTab(:,:)
-		real(8) :: aC,T1,T2,T3,fcA,emVal,recVal,reVals(:),			&
-		noVerts(:,:),sfSrc(3),cent(3)
+!--------------------------------------------------------------------
+!	End logger
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!	Analytical source term for 2-domain, middle plate case
+!--------------------------------------------------------------------
+
+	subroutine ansourcesurf(oldresfile,aC,noVerts,connTab,emSurf,	&
+	sySrc)
+		integer,parameter :: oldresfno = 106
+		integer :: i,j,k,nEmFc,emEl,emElFc,nNodes,ltc,utc,bFcNo(3),	&
+		connTab(:,:)
+		real(8) :: aC,T1,T2,T3,Tcent,fcA,emVal,Tl,Th,recVal,		&
+		sfSrc(3),cent(3),temp(4),noVerts(:,:)
+		real,allocatable :: reVals(:)
 		real(8),parameter :: sigb = 5.670373e-8, kel = 273.15d0,	&
-		Th = 373.15d0, Tl = 283.15d0, Te1 = 356.2553526d0,			&
-		Te2 = 300.04464735d0
+		Tb1 = 373.15d0, Tb2 = 283.15d0
 		real(8),intent(inout) :: sySrc(:)
+		character(*) :: oldresfile
 		type(surfaceData) :: emSurf
+
+
+		nNodes = size(sySrc,1)
+		allocate(reVals(nNodes))
+		open(oldresfno,file=oldresfile)
+		do i=1,nNodes
+			read(oldresfno,*) temp
+			reVals(i) = temp(4)
+		end do
+		close(oldresfno)
 
 		nEmFc = size(emSurf%elNum,1)
 		aC = 1.d0
+
+		ltc = 0
+		utc = 0
 		do i=1,nEmFc
 			emEl = emSurf%elNum(i)
 			emElFc = emSurf%fcNum(i)
 			call bfacenodes(emElFc,bFcNo)
 			bFcNo = connTab(emEl,bFcNo)
 			fcA = facearea(noVerts(bFcNo,:))
-			T1 = reVals(bFcNo(1))		! + kel
-			T2 = reVals(bFcNo(2)) 		! + kel
-			T3 = reVals(bFcNo(3)) 		! + kel
-			emVal = fcA*sigB*aC*((T1+T2+T3)/3.d0)**4
-			cent = sum(noVerts(bFcNo,:))/3.d0
-			if(cent(3).lt.0.d0) then
-				recVal = aC*sigb*(Th**4.d0)*fcA
-!				emVal = aC*sigb*(Te1**4.d0)*fcA
+			T1 = reVals(bFcNo(1))
+			T2 = reVals(bFcNo(2))
+			T3 = reVals(bFcNo(3))
+			Tcent = (T1+T2+T3)/3.d0
+			if(Tcent .lt. 0.d0) then
+				Tcent = 0.d0
+			end if
+			emVal = fcA*sigB*aC*(Tcent**4.d0)
+			cent = sum(noVerts(bFcNo,3))/3.d0
+			if(cent(3).lt. 0.d0) then
+				ltc = ltc+1
+				Tl = Tl + Tcent
+				recVal = aC*sigb*(Tb1**4.d0)*fcA
 				sfSrc = (recVal-emVal)/3.d0
 				sySrc(bFcNo) = sySrc(bFcNo) + sfSrc
 			else
-				recVal = aC*sigb*(Tl**4.d0)*fcA
-!				emVal = aC*sigb*(Te2**4.d0)*fcA
+				utc = utc+1
+				Th = Th + (T1+T2+T3)/3.d0
+				recVal = aC*sigb*(Tb2**4.d0)*fcA
 				sfSrc = (recVal-emVal)/3.d0
 				sySrc(bFcNo) = sySrc(bFcNo) + sfSrc
 			end if
 		end do
 
-	end subroutine ansource
+	end subroutine ansourcesurf
+
+!--------------------------------------------------------------------
+!	End analytical source
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!	Element emissions based on case
+!--------------------------------------------------------------------
 
 	subroutine getelememissions(typMat,emDom,doElems,abCo,reVals,	&
 	connTab,sfElems)
@@ -386,17 +498,71 @@ module htfem
 		close(emFNo)
 	end subroutine getelememissions
 
-    subroutine getmeshdata(meshdetails,vertices,connectivity,		&
-	domainelements,surfacenames,surfacefaces,surfaces)
-        integer,parameter :: unitnumber = 103
+!--------------------------------------------------------------------
+!	End element emissions
+!--------------------------------------------------------------------
+
+!--------------------------------------------------------------------
+!	Volumetric emission and surface source - analytical source calc
+!--------------------------------------------------------------------
+
+	subroutine ansourcevol(oldresfile,aC,noVerts,connTab,bSurfs,	&
+	sySrc)
+		integer,parameter :: oldresfno = 107
+		integer :: i,j,k,nEmFc,nElems,emEl,emElFc,nNodes,ltc,utc,	&
+		bFcNo(3),connTab(:,:)
+		real(8) :: aC,T1,T2,T3,T4,Tcent,fcA,emVal,emPerVol,Tl,Th,	&
+		recVal,sfSrc(3),cent(3),temp(4),noVerts(:,:)
+		real,allocatable :: reVals(:)
+		real(8),parameter :: sigb = 5.670373e-8, kel = 273.15d0,	&
+		Tb1 = 373.15d0, Tb2 = 283.15d0
+		real(8),intent(inout) :: sySrc(:)
+		character(*) :: oldresfile
+		type(surfaceData) :: bSurfs(:)
+
+		nEmSurf = size(bSurfs,1)
+		nElems = size(connTab,1)
+		emVal = 0.d0
+		do i=1,nEmSurf
+			nEmFc = size(bSurfs(i)%elNum,1)
+			do j=1,nEmFc
+				emEl = emSurf%elNum(i)
+				emElFc = emSurf%fcNum(i)
+				call bfacenodes(emElFc,bFcNo)
+				bFcNo = connTab(emEl,bFcNo)
+				fcA = facearea(noVerts(bFcNo,:))
+				T1 = reVals(bFcNo(1))
+				T2 = reVals(bFcNo(2))
+				T3 = reVals(bFcNo(3))
+				Tcent = (T1+T2+T3)/3.d0
+				emVal = emVal + fcA*sigB*aC*(Tcent**4.d0)
+			end do
+		end do
+
+		do i=1,nElems
+			elNodes = connTab(i,:)
+			elVerts = noVerts(elNodes,:)
+						
+		end do
+
+	subroutine ansourcevol
+
+!--------------------------------------------------------------------
+!	End volumetric sources
+!--------------------------------------------------------------------
+
+    subroutine getmeshdata(meshFile,meshdetails,vertices,			&
+	connectivity,domainelements,surfacenames,surfacefaces,surfaces)
+        integer,parameter :: unitnumber = 102
 		integer :: meshdetails(7)
         integer,allocatable :: domainelements(:),connectivity(:,:),	&
 		surfacefaces(:,:)
+		character(*) :: meshFile
         character(len=16),allocatable :: surfacenames(:)
         real(8),allocatable :: boundaryvalues(:),vertices(:,:)
 		type(surfaceData),allocatable :: surfaces(:)
 
-        call openmeshfile(unitnumber, 'a.msh')
+        call openmeshfile(unitnumber, meshFile)
         call readmeshdetails(unitnumber,meshdetails)
         call readmeshvertices(unitnumber,meshdetails, vertices)
         call readmeshconnectivity(unitnumber,meshdetails, 			&

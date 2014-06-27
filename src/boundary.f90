@@ -8,30 +8,27 @@ module boundary
 !-------------------------------------------------------------------
 ! Routine to read boundary conditions from the data file
 !-------------------------------------------------------------------
-    subroutine readboundaryconditions(meshdetails, boundaryconditions, &
-    kvals, domRhos, domCs, boundaryvalues, Tambient, transience,	   &
-	generation,	generationrate)
+    subroutine readboundaryconditions(byFile,meshdetails,byCs,		&
+	kvals,domRhos,domCs,byVals,Tambient,generation,generationrate)
         integer,parameter :: datafilenum=401
-        character(len=*),parameter :: filename='datafile.dat'
+        character(*) ::byFile
         integer,dimension(7) :: meshdetails
         integer :: numdomains,numboundaries,i,j
         logical :: generation,transience
-        integer,dimension(:),allocatable :: boundaryconditions
-        real(8) :: Tambient
-		real(8),optional :: generationrate
-        real(8),dimension(:),allocatable :: kvals,boundaryvalues,		&
-		domRhos(:),domCs(:)
+        integer,dimension(:),allocatable :: byCs
+        real(8) :: Tambient,generationrate
+        real(8),allocatable :: kvals(:),byVals(:),domRhos(:),domCs(:)
 
         numdomains = meshdetails(6)
         numboundaries = meshdetails(7)
-		allocate(boundaryconditions(numboundaries))
+		allocate(byCs(numboundaries))
 		allocate(kvals(numdomains))
-		allocate(boundaryvalues(numboundaries))
+		allocate(byVals(numboundaries))
 		allocate(domRhos(meshdetails(6)))
 		allocate(domCs(meshdetails(6)))
-        boundaryvalues = 0.0d0
-        boundaryconditions = 4
-        open(datafilenum,file=filename,status='old')
+        byVals = 0.0d0
+        byCs = 4
+        open(datafilenum,file=byFile,status='old')
         read(datafilenum,*)
         read(datafilenum,*)
         do i=1,numdomains
@@ -45,18 +42,18 @@ module boundary
 			read(datafilenum,*) domCs(i)
 		end do
 		read(datafilenum,*)
-        read(datafilenum,*) boundaryconditions
+        read(datafilenum,*) byCs
         read(datafilenum,*)
-        read(datafilenum,*) boundaryvalues
+        read(datafilenum,*) byVals
         read(datafilenum,*)
         read(datafilenum,*) Tambient
-        read(datafilenum,*)
-        read(datafilenum,*) transience
         read(datafilenum,*)
         read(datafilenum,*) generation
         if(generation) then
             read(datafilenum,*)
             read(datafilenum,*) generationrate
+		else
+			generationrate = 0.d0
         end if
 
     end subroutine readboundaryconditions

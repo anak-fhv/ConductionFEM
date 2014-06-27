@@ -74,13 +74,13 @@ module postproc
 		
 	end subroutine getflowrates
 
-	subroutine writeresultsvtk(noVerts,connTab,nDoms,doElems,reVals)
+	subroutine writeresultsvtk(noVerts,connTab,nDoms,doElems,reVals,&
+	resFile)
 		integer,parameter :: fid = 246
 		integer :: i,nNodes,nElems,nDoms,nCorners,tetType,			&
 		doElems(:),connTab(:,:)
 		real(8) :: reVals(:),noVerts(:,:)
-		character(*),parameter :: objdir = "../obj/",				&
-								  resfile = objdir//"res.vtk"
+		character(*) :: resFile
 
 		nNodes = size(noVerts,1)
 		nElems = size(connTab,1)
