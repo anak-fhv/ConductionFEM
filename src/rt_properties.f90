@@ -30,7 +30,7 @@ module rt_properties
 !     character(len=100), dimension(1), parameter :: emSurfNames = (/"Iface_Domain2"/)
     
 !     ! tomo setup value
-    character(len=20), parameter                :: data_fname = "RPC_2d_128" ! prefix for input data file
+    character(len=20), parameter                :: data_fname = "Cube" ! prefix for input data file
 !     character(len=20), parameter                :: data_fname = "cube2d" ! prefix for input data file
     character(len=100), dimension(3), parameter :: emSurfNames = (/"zLow_Domain2", "zHigh_Domain2", "Iface_Domain1"/)
 !     character(len=100), dimension(2), parameter :: emSurfNames = (/"zLow_Domain2", "zHigh_Domain2"/)

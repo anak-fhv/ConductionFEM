@@ -135,7 +135,11 @@ module element
 		real(8) :: absCoeff,cTemp,elVolEm,noTemps(4)
 
 		cTemp = sum(noTemps)/4.d0
-		elVolEm = 4*sigb*absCoeff*(cTemp**4.d0)
+		if(cTemp .gt. 0.d0) then
+			elVolEm = 4*sigb*absCoeff*(cTemp**4.d0)
+		else
+			elVolEm = 0.d0
+		end if
 	end subroutine getelementvolumeemission
 
 	function cross_product_3(v,w) result(a)

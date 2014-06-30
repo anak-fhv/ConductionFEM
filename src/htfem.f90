@@ -45,7 +45,7 @@ module htfem
 		type(noderow) :: noElemPart(4),cpElemPart(4)
 		type(noderow),allocatable :: stNo(:),cpNo(:)
 		type(elementbins),allocatable :: elbins(:)
-		type(surfaceData),allocatable :: surfaces(:)
+		type(surfaceData),allocatable :: surfaces(:),bSurfs(:)
 
 		call getproblemdata(datdir,pDatFile,meshFile,byFile,		&			! Make an arrangement for material data to be read here: Make the boundary reader exclusive to boundaries.
 		resFile,resVtk,trUser,coupled)
@@ -173,8 +173,14 @@ module htfem
 
 		oldResFile = resdir//"results0.out"
 		abCo = 1.d0
-		call ansourcesurf(trim(adjustl(oldResFile)),abCo,noVerts,	&
-		connTab,surfaces(11),sySrc)
+!		call ansourcesurf(trim(adjustl(oldResFile)),abCo,noVerts,	&
+!		connTab,surfaces(11),sySrc)
+
+		allocate(bSurfs(2))
+		bSurfs = (/surfaces(1),surfaces(5)/)
+
+		call ansourcevol(oldresfile,abCo,noVerts,connTab,bSurfs,	&
+		sySrc)
 
 		call writepresetupdata(stNo,sySrc)
 
@@ -197,19 +203,19 @@ module htfem
 		write(*,'(a,i5,2x,a)')"This program took: ",iter,"iterations&
 		& to converge."
 
-		doSmoothing = .true.
-		if(doSmoothing) then
-!			oldResFile = trim(adjustl(datdir))//oldResFile
-			smFact = 0.99d0
-			call expsmooth(reVals,smFact,trim(adjustl(oldResFile)),	&
-			smRes)
-			reVals = smRes
-		end if
+!		doSmoothing = .true.
+!		if(doSmoothing) then
+!!			oldResFile = trim(adjustl(datdir))//oldResFile
+!			smFact = 0.99d0
+!			call expsmooth(reVals,smFact,trim(adjustl(oldResFile)),	&
+!			smRes)
+!			reVals = smRes
+!		end if
 
 		call writeresults(noVerts,connTab,nDoms,doElems,reVals,		&
 		resdir,resFile,resVtk)
 
-		call writesurfaceemission(noVerts,connTab,reVals,surfaces(11))
+!		call writesurfaceemission(noVerts,connTab,reVals,surfaces(11))
 
 		if(coupled) then
 			call getelememissions(typMat,emDom,doElems,abCo,reVals,	&
@@ -510,9 +516,10 @@ module htfem
 	sySrc)
 		integer,parameter :: oldresfno = 107
 		integer :: i,j,k,nEmFc,nElems,emEl,emElFc,nNodes,ltc,utc,	&
-		bFcNo(3),connTab(:,:)
-		real(8) :: aC,T1,T2,T3,T4,Tcent,fcA,emVal,emPerVol,Tl,Th,	&
-		recVal,sfSrc(3),cent(3),temp(4),noVerts(:,:)
+		nEmSurf,elNodes(4),bFcNo(3),connTab(:,:)
+		real(8) :: aC,T1,T2,T3,T4,Tcent,fcA,recVal,emPerVol,Tl,Th,	&
+		recPerVol,volTot,netRec,dimx,dimy,dimz,elVol,sfSrc(3),		&
+		cent(3),temp(4),elVerts(4,3),noTemps(4),noVerts(:,:)
 		real,allocatable :: reVals(:)
 		real(8),parameter :: sigb = 5.670373e-8, kel = 273.15d0,	&
 		Tb1 = 373.15d0, Tb2 = 283.15d0
@@ -520,14 +527,28 @@ module htfem
 		character(*) :: oldresfile
 		type(surfaceData) :: bSurfs(:)
 
+		nNodes = size(sySrc,1)
+		allocate(reVals(nNodes))
+		open(oldresfno,file=oldresfile)
+		do i=1,nNodes
+			read(oldresfno,*) temp
+			reVals(i) = temp(4)
+		end do
+		close(oldresfno)
+
+		dimx = maxval(noVerts(:,1))-minVal(noVerts(:,1))
+		dimy = maxval(noVerts(:,2))-minVal(noVerts(:,2))
+		dimz = maxval(noVerts(:,3))-minVal(noVerts(:,3))
+		volTot = dimx*dimy*dimz
+
 		nEmSurf = size(bSurfs,1)
 		nElems = size(connTab,1)
-		emVal = 0.d0
+		recVal = 0.d0
 		do i=1,nEmSurf
 			nEmFc = size(bSurfs(i)%elNum,1)
 			do j=1,nEmFc
-				emEl = emSurf%elNum(i)
-				emElFc = emSurf%fcNum(i)
+				emEl = bSurfs(i)%elNum(i)
+				emElFc = bSurfs(i)%fcNum(i)
 				call bfacenodes(emElFc,bFcNo)
 				bFcNo = connTab(emEl,bFcNo)
 				fcA = facearea(noVerts(bFcNo,:))
@@ -535,17 +556,23 @@ module htfem
 				T2 = reVals(bFcNo(2))
 				T3 = reVals(bFcNo(3))
 				Tcent = (T1+T2+T3)/3.d0
-				emVal = emVal + fcA*sigB*aC*(Tcent**4.d0)
+				recVal = recVal + fcA*sigB*aC*(Tcent**4.d0)
 			end do
 		end do
+
+		recPerVol = recVal/volTot
 
 		do i=1,nElems
 			elNodes = connTab(i,:)
 			elVerts = noVerts(elNodes,:)
-						
+			noTemps = reVals(elNodes)
+			elVol = elementvolume(elVerts)
+			call getelementvolumeemission(aC,noTemps,emPerVol)
+			netRec = (recPerVol-emPerVol)*elVol
+			sySrc(elNodes) = sySrc(elNodes) + netRec/4.d0
 		end do
 
-	subroutine ansourcevol
+	end subroutine ansourcevol
 
 !--------------------------------------------------------------------
 !	End volumetric sources
