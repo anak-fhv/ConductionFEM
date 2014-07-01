@@ -2,9 +2,9 @@ module element
 
 	implicit none
 
-	type elementbins
-		integer,allocatable :: bin(:)
-	end type elementbins
+!	type elementbins
+!		integer,allocatable :: bin(:)
+!	end type elementbins
 
 	contains
 
@@ -57,27 +57,27 @@ module element
 		centroid = sum(ec,1)/4.d0
 	end subroutine elementcentroid
 
-	subroutine addtoelementbins(elno,elcent,dnum,dlow,dhigh,elbins)
-		integer :: n,nentries,elno,dnum,binnum
-		integer,allocatable :: temp(:)
-		real(8) :: dlow,dhigh,elcent(3)
-		type(elementbins) :: elbins(:)
+!	subroutine addtoelementbins(elno,elcent,dnum,dlow,dhigh,elbins)
+!		integer :: n,nentries,elno,dnum,binnum
+!		integer,allocatable :: temp(:)
+!		real(8) :: dlow,dhigh,elcent(3)
+!		type(elementbins) :: elbins(:)
 
-		n = size(elbins,1)
-		binnum = ceiling(real(n)*((elcent(dnum)-dlow)/(dhigh-dlow)))
+!		n = size(elbins,1)
+!		binnum = ceiling(real(n)*((elcent(dnum)-dlow)/(dhigh-dlow)))
 
-		if(.not.(allocated(elbins(binnum)%bin))) then
-			allocate(elbins(binnum)%bin(1))
-			elbins(binnum)%bin(1) = elno
-		else
-			nentries = size(elbins(binnum)%bin,1)
-			allocate(temp(nentries+1))
-			temp(1:nentries) = elbins(binnum)%bin
-			temp(nentries+1) = elno
-			call move_alloc(temp,elbins(binnum)%bin)
-		end if
-		
-	end subroutine addtoelementbins
+!		if(.not.(allocated(elbins(binnum)%bin))) then
+!			allocate(elbins(binnum)%bin(1))
+!			elbins(binnum)%bin(1) = elno
+!		else
+!			nentries = size(elbins(binnum)%bin,1)
+!			allocate(temp(nentries+1))
+!			temp(1:nentries) = elbins(binnum)%bin
+!			temp(nentries+1) = elno
+!			call move_alloc(temp,elbins(binnum)%bin)
+!		end if
+!		
+!	end subroutine addtoelementbins
 
 	subroutine bfacenodes(fcnum,fcnodes)
 		integer :: fcnum,fcnodes(3)

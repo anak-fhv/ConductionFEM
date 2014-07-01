@@ -5,3 +5,12 @@ Following changes to the code required today:
 	1. Change handling of boundary conditions to use surface type variable instead of sfElems array.
 	2. Change the problem data input into multiple files instead of a single datafile.dat.
 	3. Change the reading of data from the src folder to the data folder. Same for readmesh.
+
+
+- add another parameter to tetra-type
+- in RayAbsorbing in rt_tracing count number of rays absorbed tetra%nrays = tetra%narys + 1
+- set in rt_parameters
+- use led setup
+- emission from volume: choose random point, bring it to surface -> normal raytracing
+- use data file from absorbtion as source for emission (needs some coding work)
+ 

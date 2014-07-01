@@ -5,6 +5,7 @@ module htfem
 	use boundary
 	use assembly
 	use solver
+	use preproc
 	use postproc
 	use transient
 
@@ -17,8 +18,8 @@ module htfem
 !							 emfilenum=105,nbins=100, bindim=3,		&
 !							 srcfilenum=106
 		integer :: nNodes,nElems,nDoms,nSurfs,elDom,fcBytype,i,j,k,	&	! Prefixes: n=>number, el=>element, fc=>face
-				   typMat,emDom,emFc,iter,meshVals(7),elNodes(4),	&	! by=>boundary, sf=>surface, gn=>generation, no=>node
-				   elByfaces(4)
+				   typMat,emDom,emFc,iter,mDets(7),elNodes(4),	&	! by=>boundary, sf=>surface, gn=>generation, no=>node
+				   elByfaces(4),nbins
 		integer,allocatable :: doElems(:),byCs(:),stRowPtr(:),		&	! do=>domain, sy=>global system
 							   stCols(:),cpRowPtr(:),cpCols(:),		&
 							   connTab(:,:),sfElems(:,:)
@@ -26,7 +27,8 @@ module htfem
 		real(8) :: elVol,tAmbient,gnVal,elK,tc,dlow,dhigh,qBHigh,	&
 				   qBLow,abCo,elVolEm,elSurfEm,smFact,byTemp(4),	&
 				   bySrc(4),gnSrc(4),elVerts(4,3),elSpfns(4,4),		&
-				   elSt(4,4),bySt(4,4),elCp(4,4),noSrcRad
+				   elSt(4,4),bySt(4,4),elCp(4,4),noSrcRad,dmax(3),	&
+				   dmin(3)
 		real(8),allocatable :: domKs(:),sfVals(:),sySt(:),sySrc(:), &
 							   syTvals(:),noVerts(:,:),reVals(:),	&
 							   vF(:),domRhos(:),domCs(:),syCp(:),	&
@@ -39,7 +41,7 @@ module htfem
 								  srcfile = objdir//"radsource.out"
 		character(72) :: meshFile,byFile,resFile,resVtk,oldResFile,	&
 		transResPre
-		character(16),allocatable :: sfFcname(:)
+		character(16),allocatable :: sfNames(:)
 		logical,parameter :: gnDefault = .false.,trDefault = .false.
 		logical :: trUser,coupled,gnUser,useRK,doSmoothing
 		type(noderow) :: noElemPart(4),cpElemPart(4)
@@ -53,15 +55,15 @@ module htfem
 		write(*,'(a)') "Now reading mesh file..."
 		meshFile = datdir//trim(adjustl(meshFile))
 
-		call getmeshdata(meshFile,meshVals,noVerts,connTab,doElems,	&
-		sfFcname,sfElems,surfaces)
+		call getmeshdata(meshFile,mDets,noVerts,connTab,doElems,	&
+		elbins,sfNames,sfElems,surfaces)
 
 		write(*,'(a)') "Meshdetails received."
 
-		nNodes = meshVals(1)
-		nElems = meshVals(2)
-		nDoms  = meshVals(6)
-		nSurfs = meshVals(7)
+		nNodes = mDets(1)
+		nElems = mDets(2)
+		nDoms  = mDets(6)
+		nSurfs = mDets(7)
 
 !		dlow = minval(noverts(:,bindim),1)
 !		dhigh = maxval(noverts(:,bindim),1)
@@ -80,7 +82,7 @@ module htfem
 		syTvals = 0.d0
 
 		byFile = datdir//trim(adjustl(byFile))
-		call readboundaryconditions(byFile,meshVals,byCs,domKs,		&
+		call readboundaryconditions(byFile,mDets,byCs,domKs,		&
 		domRhos,domCs,sfVals,tAmbient,gnUser,gnVal)
 
 !		trUser = .false.
@@ -88,10 +90,21 @@ module htfem
 			allocate(cpNo(nNodes))
 		end if
 
-		call summarisesystem(meshVals,byCs,sfVals,sfFcname,trUser,	&
+		call summarisesystem(mDets,byCs,sfVals,sfNames,trUser,	&
 		gnUser)
 
 		write(*,'(a)') "Beginning assembly..."
+
+!--------------------------------------------------------------------
+!	Binning trials
+
+!		nbins = 8**3
+!		allocate(elbins(nbins))
+!		do i=1,3
+!			dmax(i) = maxval(noVerts(:,i))
+!			dmin(i) = minval(noVerts(:,i))
+!		end do
+!--------------------------------------------------------------------
 
 		do i=1,nElems
 
@@ -106,6 +119,8 @@ module htfem
 			call elementstiffness(elSpfns,elVol,elK,elSt)
 
 !			call binelement(elbins,bindim,dlow,dhigh,i,elVerts)
+
+!			call binelement(i,dmax,dmin,elVerts,elbins)
 
 			if(trUser) then
 				call getcapacitance(elDom,elVol,domCs,domRhos,elCp)
@@ -150,6 +165,14 @@ module htfem
 
 		write(*,'(a)') "Assembly completed."
 
+		open(1369,file=resdir//"bins.out")
+		do i=1,nbins
+			write(1369,*) "Bin number: ", i
+			write(1369,'(5(i8,2x))') elbins(i)%bin
+		end do
+		close(1369)
+
+
 		if(trUser) then
 
 ! 			Empty call created for later implementation
@@ -176,13 +199,13 @@ module htfem
 !		call ansourcesurf(trim(adjustl(oldResFile)),abCo,noVerts,	&
 !		connTab,surfaces(11),sySrc)
 
-		allocate(bSurfs(2))
-		bSurfs = (/surfaces(1),surfaces(5)/)
+!		allocate(bSurfs(2))
+!		bSurfs = (/surfaces(1),surfaces(5)/)
 
-		call ansourcevol(oldresfile,abCo,noVerts,connTab,bSurfs,	&
-		sySrc)
+!		call ansourcevol(oldresfile,abCo,noVerts,connTab,bSurfs,	&
+!		sySrc)
 
-		call writepresetupdata(stNo,sySrc)
+!		call writepresetupdata(stNo,sySrc)
 
 		call setupfinalequations(stNo,sySrc,syTvals)
 
@@ -578,66 +601,64 @@ module htfem
 !	End volumetric sources
 !--------------------------------------------------------------------
 
-    subroutine getmeshdata(meshFile,meshdetails,vertices,			&
-	connectivity,domainelements,surfacenames,surfacefaces,surfaces)
-        integer,parameter :: unitnumber = 102
-		integer :: meshdetails(7)
-        integer,allocatable :: domainelements(:),connectivity(:,:),	&
-		surfacefaces(:,:)
+    subroutine getmeshdata(meshFile,mDets,noVerts,connTab,doElems,	&
+	elbins,sfNames,sfElems,surfaces)
+        integer,parameter :: fno = 102
+		integer :: mDets(7)
+        integer,allocatable :: doElems(:),connTab(:,:),sfElems(:,:)
 		character(*) :: meshFile
-        character(len=16),allocatable :: surfacenames(:)
-        real(8),allocatable :: boundaryvalues(:),vertices(:,:)
+        character(len=16),allocatable :: sfNames(:)
+        real(8),allocatable :: noVerts(:,:)
 		type(surfaceData),allocatable :: surfaces(:)
+		type(elementbins),allocatable :: elbins(:)
 
-        call openmeshfile(unitnumber, meshFile)
-        call readmeshdetails(unitnumber,meshdetails)
-        call readmeshvertices(unitnumber,meshdetails, vertices)
-        call readmeshconnectivity(unitnumber,meshdetails, 			&
-		connectivity)
-        call readmeshdomains(unitnumber,meshdetails,domainelements)
-        call readmeshsurfaces(unitnumber,meshdetails,surfacefaces,	&
-		surfacenames,surfaces)
-        call closemeshfile(unitnumber)
+        call openmeshfile(fno,meshFile)
+        call readmeshdetails(fno,mDets)
+        call readmeshvertices(fno,mDets,noVerts)
+        call readmeshconnectivity(fno,mDets,noVerts,connTab,elbins)
+        call readmeshdomains(fno,mDets,doElems)
+        call readmeshsurfaces(fno,mDets,sfElems,sfNames,surfaces)
+        call closemeshfile(fno)
     end subroutine getmeshdata
 
-	subroutine summarisesystem(meshVals,byCs,sfVals,sfFcname,		&
+	subroutine summarisesystem(mDets,byCs,sfVals,sfNames,		&
 	trUser,gnUser)
-		integer :: i,meshVals(:),byCs(:)
+		integer :: i,mDets(:),byCs(:)
 		real(8),parameter :: small=1e-8
 		real(8) :: sfVals(:)
 		logical :: trUser,gnUser
-		character(*) :: sfFcname(:)
+		character(*) :: sfNames(:)
 
 		write(*,*)""
 		write(*,'(a)') "Short system summary: "
-		write(*,'(4x,a,1x,i4)') "Domains: ", meshVals(6)
-		write(*,'(4x,a,1x,i8)') "Number of nodes: ", meshVals(1)
-		write(*,'(4x,a,1x,i8)') "Number of elements: ", meshVals(2)
+		write(*,'(4x,a,1x,i4)') "Domains: ", mDets(6)
+		write(*,'(4x,a,1x,i8)') "Number of nodes: ", mDets(1)
+		write(*,'(4x,a,1x,i8)') "Number of elements: ", mDets(2)
 		write(*,*)""
 		write(*,'(4x,a)') "System boundaries, not including &
 		&domain interfaces: "
 		write(*,*)""
 
-		do i=1,meshVals(7)
+		do i=1,mDets(7)
 			
 			if(byCs(i) == 1) then
-				write(*,'(4x,a,1x,a)') trim(sfFcname(i)), &
+				write(*,'(4x,a,1x,a)') trim(sfNames(i)), &
 				&": Temperature"
 			elseif(byCs(i) == 2) then
 				if(sfVals(i) < small) then
-					write(*,'(4x,a,1x,a)') trim(sfFcname(i)), &
+					write(*,'(4x,a,1x,a)') trim(sfNames(i)), &
 					&": Adiabatic"
 				else
-					write(*,'(4x,a,1x,a)') trim(sfFcname(i)), &
+					write(*,'(4x,a,1x,a)') trim(sfNames(i)), &
 					&": Flux"
 				end if
 			elseif(byCs(i) == 3) then
-				write(*,'(4x,a,1x,a)') trim(sfFcname(i)), &
+				write(*,'(4x,a,1x,a)') trim(sfNames(i)), &
 				&": Convective"
 			elseif(byCs(i) == 4) then
 				continue
 			else
-				write(*,'(4x,a)') "For ", trim(sfFcname(i))
+				write(*,'(4x,a)') "For ", trim(sfNames(i))
 				write(*,'(4x,a)')"Unrecognised boundary condition."
 				write(*,'(4x,a)')"Update datafile.dat inputs."
 				write(*,'(4x,a)')"Now quitting program execution..."
@@ -657,14 +678,14 @@ module htfem
 		write(*,*)""
 	end subroutine summarisesystem
 
-	subroutine binelement(elbins,bindim,dlow,dhigh,elno,ec)
-		integer :: bindim,elno
-		real(8) :: dlow,dhigh,cent(3),ec(4,3)
-		type(elementbins) :: elbins(:)
+!	subroutine binelement(elbins,bindim,dlow,dhigh,elno,ec)
+!		integer :: bindim,elno
+!		real(8) :: dlow,dhigh,cent(3),ec(4,3)
+!		type(elementbins) :: elbins(:)
 
-		call elementcentroid(ec,cent)
-		call addtoelementbins(elno,cent,bindim,dlow,dhigh,elbins)
-	end subroutine binelement
+!		call elementcentroid(ec,cent)
+!		call addtoelementbins(elno,cent,bindim,dlow,dhigh,elbins)
+!	end subroutine binelement
 
 	subroutine addtoglobaltemperature(Tvals,elnodes,btemp)
 		real(8),intent(inout) :: Tvals(:)
